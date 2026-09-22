@@ -140,9 +140,9 @@ export function PresetsModal() {
 
   const demos = useMemo(
     () =>
-      TEMPLATES.filter((t) => t.family === sel.family)
-        .slice(0, 4)
-        .map((t) => buildSlide(t, { preset: sel, zone: t.zones[0], tone: 'light', imageIds: firstImg ? [firstImg, firstImg] : [], fields: t.demo })),
+      ['cover-title', 'content-number', 'list-bullets', 'cta-keyword']
+        .map((id) => TEMPLATES.find((t) => t.id === id)!)
+        .map((t) => buildSlide(t, { preset: sel, imageIds: firstImg ? [firstImg] : [], fields: t.demo })),
     [sel, firstImg],
   )
 

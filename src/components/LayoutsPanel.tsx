@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
-import { analyzeSlot, slotSize } from '../lib/analyze'
+import { useMemo, useState } from 'react'
+import { newSeed } from '../presets/layout'
+import { slideAnalyses } from '../lib/reroll'
 import { buildSlide, ROLE_GROUPS, TEMPLATES, type TemplateDef } from '../presets/templates'
 import { allPresets, useSlide, usePreset, useStore } from '../store'
-import type { Zone } from '../types'
+import type { Slide } from '../types'
 import { SlideThumb } from './SlideView'
 
 export function LayoutsPanel() {
@@ -12,34 +13,25 @@ export function LayoutsPanel() {
   const images = useStore((s) => s.imageMap)
   const current = useStore((s) => s.current)
   const st = useStore.getState
+  const [roll, setRoll] = useState(() => newSeed())
 
-  // only the layouts designed for this style — no cross-style mixing
-  const own = TEMPLATES.filter((t) => t.family === preset.family)
-  const groups = ROLE_GROUPS.map((g) => ({ ...g, items: own.filter((t) => t.role === g.role) })).filter((g) => g.items.length)
+  const groups = ROLE_GROUPS.map((g) => ({ ...g, items: TEMPLATES.filter((t) => t.role === g.role) })).filter((g) => g.items.length)
   const slideImgs = slide.slots.map((s) => s.imageId).filter(Boolean) as string[]
+  const idsFor = (t: TemplateDef) => (t.images === 2 ? [slideImgs[0], slideImgs[1] ?? slideImgs[0]].filter(Boolean) : slideImgs.slice(0, 1))
 
+  // previews are random arrangements too — the dice re-rolls them
   const previews = useMemo(
-    () =>
-      Object.fromEntries(
-        own.map((t) => [t.id, buildSlide(t, { preset, zone: t.zones[0], tone: 'light', imageIds: t.images === 2 ? [slideImgs[0], slideImgs[1] ?? slideImgs[0]].filter(Boolean) : slideImgs.slice(0, 1), fields: t.demo })]),
-      ),
+    () => Object.fromEntries(TEMPLATES.map((t, i) => [t.id, buildSlide(t, { preset, imageIds: idsFor(t), fields: t.demo, seed: roll + i * 7919 })])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [preset, slideImgs.join(',')],
+    [preset, slideImgs.join(','), roll],
   )
 
-  /** Builds the template with placeholder text; uses image analysis to pick zone + text tone. */
-  const make = async (t: TemplateDef) => {
-    const ids = [...slideImgs]
-    if (t.images === 2 && ids.length < 2 && ids[0]) ids.push(ids[0])
-    let zone: Zone = t.zones[0]
-    let tone: 'light' | 'dark' = 'light'
-    const first = ids[0] ? images[ids[0]] : undefined
-    if (first && t.role !== 'split') {
-      const a = await analyzeSlot(first, { imageId: first.id, focusX: 50, focusY: 50, zoom: 1 }, slotSize('single').w, slotSize('single').h)
-      zone = [...t.zones].sort((x, y) => a.zones[y].score - a.zones[x].score)[0] ?? zone
-      tone = a.zones[zone].lum > 0.62 ? 'dark' : 'light'
-    }
-    return buildSlide(t, { preset, zone, tone, imageIds: ids, fields: t.demo })
+  /** Fresh random arrangement, guided by what's calm in the photo. */
+  const make = async (t: TemplateDef): Promise<Slide> => {
+    const ids = idsFor(t)
+    const draft = buildSlide(t, { preset, imageIds: ids, fields: t.demo })
+    const analyses = await slideAnalyses(draft, images)
+    return buildSlide(t, { preset, imageIds: ids, fields: t.demo, analyses })
   }
 
   const apply = async (t: TemplateDef) => {
@@ -71,8 +63,13 @@ export function LayoutsPanel() {
         </div>
       </div>
 
-      <div className="tiny muted" style={{ marginBottom: 14 }}>
-        Kliknij układ, aby zastosować go do bieżącego slajdu, albo „+ nowy slajd”. Tekst trafia w najspokojniejszą część zdjęcia — potem wpisz własną treść po prawej.
+      <div className="row" style={{ marginBottom: 14, alignItems: 'flex-start' }}>
+        <div className="tiny muted grow">
+          Układy nie mają stałych pozycji — za każdym razem tekst ląduje w innym, spokojnym miejscu zdjęcia. Kliknij, aby zastosować do bieżącego slajdu.
+        </div>
+        <button className="btn sm" title="Wylosuj nowe podglądy" onClick={() => setRoll(newSeed())}>
+          🎲 Losuj
+        </button>
       </div>
 
       {groups.map((g) => (
@@ -85,7 +82,7 @@ export function LayoutsPanel() {
           </div>
           <div className="tpl-grid">
             {g.items.map((t) => (
-              <div key={t.id} className="tpl" role="button" onClick={() => apply(t)} title={`${t.description}\nKliknij: zastosuj do bieżącego slajdu`}>
+              <div key={t.id} className="tpl" role="button" onClick={() => apply(t)} title={`${t.description}\nKliknij: zastosuj do bieżącego slajdu (za każdym razem inny układ)`}>
                 <SlideThumb slide={previews[t.id]} preset={preset} images={images} width={138} />
                 <div className="tpl-name">
                   {t.name}

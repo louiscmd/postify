@@ -3,9 +3,10 @@ import { useEffect, useRef, useState } from 'react'
 import { create } from 'zustand'
 import { aiErrorMessage, generateCarousel, type AiCarousel } from '../lib/ai'
 import { analyzeSlot } from '../lib/analyze'
-import { buildSlide, templateById } from '../presets/templates'
+import { slideAnalyses } from '../lib/reroll'
+import { buildSlide } from '../presets/templates'
 import { allPresets, usePreset, useStore } from '../store'
-import type { Preset, Slide } from '../types'
+import type { GalleryImage, Preset, Role, Slide } from '../types'
 import { W, H } from '../types'
 import { Gallery } from './Gallery'
 import { Send, Sparkles } from './Icons'
@@ -32,13 +33,18 @@ const SUGGESTIONS = [
 
 const MAX_IMAGES = 20
 
-export function slidesFromAi(res: AiCarousel, preset: Preset): Slide[] {
-  return res.slides.map((s) => {
-    const tpl = templateById(s.template)!
-    const zone = tpl.zones.includes(s.zone) ? s.zone : tpl.zones[0]
-    return buildSlide(tpl, { preset, zone, tone: s.tone, imageIds: s.imageIds, fields: s.fields })
-  })
+/** AI content → slides arranged by the layout engine (random, guided by each photo + the AI's zone hint). */
+export async function slidesFromAi(res: AiCarousel, preset: Preset, images: Record<string, GalleryImage>): Promise<Slide[]> {
+  return Promise.all(
+    res.slides.map(async (s) => {
+      const draft = buildSlide(s.role, { preset, imageIds: s.imageIds, fields: s.fields })
+      const analyses = await slideAnalyses(draft, images)
+      return buildSlide(s.role, { preset, imageIds: s.imageIds, fields: s.fields, analyses, hint: s.zone })
+    }),
+  )
 }
+
+const ROLE_NAMES: Record<Role, string> = { cover: 'Okładka', content: 'Treść', list: 'Lista', statement: 'Akcent', split: 'Podział 50/50', cta: 'CTA' }
 
 export function AIPanel() {
   const { msgs, busy, stage, history, projectId } = useChat()
@@ -87,7 +93,8 @@ export function AIPanel() {
         images: withStats,
         history: baseHistory,
       })
-      const slides = slidesFromAi(result, preset)
+      useChat.setState({ stage: 'Układam slajdy…' })
+      const slides = await slidesFromAi(result, preset, st().imageMap)
       if (!slides.length) throw new Error('AI nie zwróciło żadnych slajdów. Spróbuj inaczej sformułować prośbę.')
       let pid = projectId
       if (revising) {
@@ -99,7 +106,7 @@ export function AIPanel() {
         st().newProject(result.title || q.slice(0, 40), preset.id, slides)
         pid = st().project.id
       }
-      const lines = result.slides.map((s, i) => `${i + 1}. ${templateById(s.template)?.name ?? s.template} — ${(s.fields.title || s.fields.top || s.fields.caption || s.fields.body || s.fields.keyword).replace(/\*\*|==|\|\|/g, '').slice(0, 60)}`)
+      const lines = result.slides.map((s, i) => `${i + 1}. ${ROLE_NAMES[s.role]} — ${s.purpose}`)
       useChat.setState((c) => ({
         msgs: [...c.msgs, { role: 'bot', text: `${revising ? 'Poprawione' : 'Gotowe'}: „${result.title}” — ${slides.length} slajdów.\n\n${lines.join('\n')}\n\nMożesz wszystko edytować ręcznie albo napisz, co zmienić (np. „krótsze teksty”, „zamień slajd 3 na listę”).` }],
         history: nextHistory,

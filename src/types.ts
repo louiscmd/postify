@@ -79,9 +79,14 @@ export interface ChipsBlock {
 
 export type Block = TextBlock | ChipsBlock
 
+/** What a slide does in the carousel — drives how the layout engine arranges it. */
+export type Role = 'cover' | 'content' | 'list' | 'statement' | 'split' | 'cta'
+
 export interface StackEl {
   id: string
   type: 'stack'
+  /** main text group, bottom caption, or one half of a 50/50 split */
+  role?: 'main' | 'caption' | 'top' | 'bottom'
   x: number
   y: number
   w: number
@@ -145,6 +150,9 @@ export interface Slide {
   overlay: Overlay
   elements: El[]
   template?: string
+  role?: Role
+  /** seed of the last random arrangement (re-roll = new seed) */
+  seed?: number
 }
 
 export interface Project {

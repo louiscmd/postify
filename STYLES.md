@@ -1,6 +1,6 @@
 # Style analysis of the reference posts
 
-All measurements are on the 1080 × 1350 canvas. These rules are encoded in [`src/presets/index.ts`](src/presets/index.ts) (text styles) and [`src/presets/templates.ts`](src/presets/templates.ts) (positions).
+All measurements are on the 1080 × 1350 canvas. Typography is encoded in [`src/presets/index.ts`](src/presets/index.ts). **Positions below describe the references only.** Postify does not copy them. The layout engine ([`src/presets/layout.ts`](src/presets/layout.ts)) randomises placement within each style's rules: allowed alignments, width range, margins, decoration probability and underline chance.
 
 ---
 

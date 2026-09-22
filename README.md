@@ -11,7 +11,7 @@ Export gives you a ZIP of numbered PNGs at 1080×1350, ready to upload.
 
 ## Style presets
 
-Three presets built from the reference posts. The full breakdown is in [STYLES.md](STYLES.md) and in *Presety* inside the app.
+Three presets built from the reference posts. They copy the **style** (fonts, weights, shadows, colours, decorations), not the positions: a layout engine places the text at random within each style's rules. It picks a calm area of the photo, then varies alignment, column width, margins, where inset photos and arrows go, and how strong the gradient is. **🎲 Losuj układ** re-rolls a slide, and **Losuj wszystkie** re-rolls the whole carousel. Text and photos stay as they are. The full breakdown is in [STYLES.md](STYLES.md) and in *Presety* inside the app.
 
 | Preset | Look |
 |---|---|
@@ -21,7 +21,7 @@ Three presets built from the reference posts. The full breakdown is in [STYLES.m
 
 Each text block references a style slot (title, subtitle, body, list, CTA…). Switching the preset restyles the whole carousel, and **Duplikuj i edytuj** (duplicate and edit) creates your own variant with different fonts, sizes, colours and shadows.
 
-There are 15 layout templates (*Układy*), and every one works with every preset.
+The *Układy* panel lists 16 content structures (cover, content, list, accent, 50/50, CTA). None of them has fixed coordinates, so every click gives a new arrangement. Text size adapts to the amount of text, so nothing gets cut.
 
 ### Text markup
 

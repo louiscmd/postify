@@ -9,6 +9,7 @@ import { PresetsModal, ProjectsModal, SettingsModal } from './components/Modals'
 import { SlideStrip } from './components/SlideStrip'
 import { TipsPanel } from './components/TipsPanel'
 import { exportZip } from './lib/export'
+import { rerollSlides } from './lib/reroll'
 import { allPresets, usePreset, useStore } from './store'
 
 const isTyping = () => {
@@ -163,6 +164,12 @@ export default function App() {
               Slajd <b style={{ color: 'var(--text)' }}>{s.current + 1}</b> / {s.project.slides.length} · 1080 × 1350 (4:5)
             </span>
             <div className="grow" style={{ flex: 1 }} />
+            <button className="btn sm" onClick={() => rerollSlides([s.current])} title="Nowy losowy układ tego slajdu — tekst i zdjęcia zostają (Ctrl+Z cofa)">
+              🎲 Losuj układ
+            </button>
+            <button className="btn sm" onClick={() => rerollSlides(s.project.slides.map((_, i) => i))} title="Nowy losowy układ wszystkich slajdów">
+              Losuj wszystkie
+            </button>
             <button className={`btn sm ${s.showTips ? 'active' : ''}`} onClick={() => s.set({ showTips: !s.showTips })} title="Pokaż, gdzie tło jest spokojne, a gdzie ruchliwe">
               <Bulb size={14} /> Strefy tekstu
             </button>

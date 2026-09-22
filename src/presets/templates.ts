@@ -1,5 +1,13 @@
-import type { Block, BgSlot, DoodleEl, El, ImageEl, Overlay, Preset, Slide, StackEl, StyleKey, TextStyle, Tone, Zone } from '../types'
+/**
+ * Slide *structures*: which pieces of content a slide has (title, list, chips…) and
+ * what it does in the carousel. They contain NO coordinates — `compose` builds the
+ * text blocks in the current style and `arrange` (layout.ts) places them randomly,
+ * guided by the photo and the style's rules.
+ */
+import type { Analysis } from '../lib/analyze'
 import { uid } from '../lib/util'
+import type { Block, BgSlot, DoodleEl, El, ImageEl, Overlay, Preset, Role, Slide, StackEl, StyleKey, TextStyle, Zone } from '../types'
+import { arrange, newSeed, rng, RULES } from './layout'
 
 export interface Fields {
   kicker: string
@@ -29,30 +37,16 @@ export const emptyFields = (): Fields => ({
   bullets: [], chips: [], caption: '', keyword: '', note: '', top: '', bottom: '',
 })
 
-export interface BuildCtx {
-  fields: Fields
-  zone: Zone
-  tone: Tone
-  imageIds: string[]
-  preset: Preset
-}
-
 export interface TemplateDef {
   id: string
-  family: Preset['family']
-  role: 'cover' | 'content' | 'list' | 'cta' | 'statement' | 'split'
+  role: Role
   name: string
   description: string
-  /** What the AI should use this template for and which fields it reads. */
-  ai: string
-  fields: FieldKey[]
   images: 1 | 2
-  zones: Zone[]
   demo: Partial<Fields>
-  build: (ctx: BuildCtx) => Omit<Slide, 'id'>
 }
 
-// ── helpers ──────────────────────────────────────────────────
+// ── element helpers ──────────────────────────────────────────
 const slot = (imageId: string | null = null): BgSlot => ({ imageId, focusX: 50, focusY: 50, zoom: 1 })
 const ov = (o: Partial<Overlay> = {}): Overlay => ({ top: 0, bottom: 0, dim: 0, ...o })
 
@@ -73,7 +67,7 @@ const tb = (styleKey: StyleKey, text: string, o: TbOpts = {}): Block => ({
 })
 
 const chips = (items: string[], marginTop = 0): Block => ({
-  id: uid(), kind: 'chips', styleKey: 'chip', items, overrides: {}, selfAlign: 'stretch', marginTop, gapX: 40, gapY: 44,
+  id: uid(), kind: 'chips', styleKey: 'chip', items, overrides: {}, selfAlign: 'stretch', marginTop, gapX: 36, gapY: 36,
 })
 
 const stack = (p: Partial<StackEl> & { blocks: Block[] }): StackEl => ({
@@ -85,347 +79,102 @@ const doodle = (p: Partial<DoodleEl>): DoodleEl => ({
 })
 
 const inset = (p: Partial<ImageEl>): ImageEl => ({
-  id: uid(), type: 'image', x: 56, y: 72, w: 362, h: 574, imageId: null, radius: 30, shadow: true, focusX: 50, focusY: 50, rotation: 0, ...p,
+  id: uid(), type: 'image', x: 56, y: 72, w: 362, h: 520, imageId: null, radius: 24, shadow: true, focusX: 50, focusY: 50, rotation: 0, ...p,
 })
-
-/** Dark text + no shadow when the chosen zone of the photo is bright. */
-const toneOv = (ctx: BuildCtx): Partial<TextStyle> => (ctx.tone === 'dark' ? { color: ctx.preset.dark, shadow: 'none' } : {})
-
-/** Place a stack vertically according to zone. */
-const place = (zone: Zone, top = 130, bottom = 1235): Pick<StackEl, 'y' | 'anchor'> =>
-  zone === 'top' ? { y: top, anchor: 'top' } : zone === 'bottom' ? { y: bottom, anchor: 'bottom' } : { y: 675, anchor: 'center' }
-
-/**
- * Rough fit: shrink a headline so it wraps to at most `maxLines` lines and its longest word fits.
- * charW = average glyph width as a fraction of font size for that face.
- */
-export const fit = (text: string, base: number, width: number, charW: number, maxLines = 2, min = 48) => {
-  const clean = text.replace(/\*\*|==|\|\|/g, '')
-  const lines = clean.split('\n')
-  const longestWord = Math.max(1, ...clean.split(/\s+/).map((w) => w.length))
-  let size = Math.min(base, width / (longestWord * charW))
-  const count = (sz: number) => lines.reduce((n, l) => n + Math.max(1, Math.ceil((l.length * charW * sz) / width)), 0)
-  while (size > min && count(size) > maxLines) size -= 2
-  return Math.round(Math.max(min, size))
-}
 
 const quoteWrap = (k: string) => (/^[„“"«]/.test(k.trim()) ? k.trim() : `“${k.trim()}”`)
 const bulletsText = (b: string[]) => b.filter(Boolean).map((x) => `- ${x.replace(/^[-•]\s*/, '')}`).join('\n')
+const hl = (s: string) => (s.includes('==') ? s : `==${s}==`)
 
-const base = (ctx: BuildCtx, elements: El[], overlay: Partial<Overlay> = {}, layout: Slide['layout'] = 'single'): Omit<Slide, 'id'> => ({
-  layout,
-  slots: layout === 'split' ? [slot(ctx.imageIds[0] ?? null), slot(ctx.imageIds[1] ?? null)] : [slot(ctx.imageIds[0] ?? null)],
-  bgColor: '#1d1718',
-  overlay: ov(overlay),
-  elements,
-})
+// ── compose: content → styled blocks (no positions) ─────────
+export function compose(role: Role, f: Fields, imageIds: string[], preset: Preset, seed: number): Omit<Slide, 'id'> {
+  const r = rng(seed ^ 0x9e3779b9)
+  const R = RULES[preset.family]
+  const story = preset.family === 'story'
+  const els: El[] = []
+  const split = role === 'split' || (!!f.top && !!f.bottom)
 
-// ── EDITORIAL ────────────────────────────────────────────────
-const edCover: TemplateDef = {
-  id: 'ed-cover', family: 'editorial', role: 'cover',
-  name: 'Tytuł + podtytuł',
-  description: 'Ogromny szeryf, pod nim kapitaliki, strzałka prowadząca do zdjęcia.',
-  ai: 'Cover/hook slide. title = 1–3 punchy words (big serif), subtitle = short uppercase line (2–4 words).',
-  fields: ['title', 'subtitle'], images: 1, zones: ['top', 'bottom'],
-  demo: { title: 'Twój Tytuł', subtitle: 'Krótki podtytuł' },
-  build: (ctx) => {
-    const t = toneOv(ctx)
-    const els: El[] = [
-      stack({
-        x: 78, w: 924, ...place(ctx.zone, 140),
-        blocks: [
-          tb('title', ctx.fields.title, { overrides: { ...t, size: fit(ctx.fields.title, 158, 924, 0.5, 2, 90) } }),
-          tb('subtitle', ctx.fields.subtitle, { marginTop: 4, overrides: t }),
-        ],
-      }),
-    ]
-    if (ctx.zone === 'top') els.push(doodle({ kind: 'curl', x: 880, y: 300, w: 100, h: 120, color: ctx.tone === 'dark' ? ctx.preset.dark : '#ffffff', stroke: 3 }))
-    return base(ctx, els)
-  },
-}
+  if (split) {
+    els.push(stack({ role: 'top', blocks: [tb('split', f.top || f.title)] }))
+    els.push(stack({ role: 'bottom', blocks: [tb('split', f.bottom || f.body || f.caption)] }))
+    return { layout: 'split', role: 'split', slots: [slot(imageIds[0] ?? null), slot(imageIds[1] ?? imageIds[0] ?? null)], bgColor: '#1d1718', overlay: ov(), elements: els }
+  }
 
-const edFramed: TemplateDef = {
-  id: 'ed-framed', family: 'editorial', role: 'cover',
-  name: 'Nadtytuł / tytuł / podpis',
-  description: 'Nadtytuł do lewej, szeryf, podpis wyrównany do prawej krawędzi.',
-  ai: 'Alternative cover. pretitle = short uppercase lead-in ending with "…", title = 2–3 word serif headline, posttitle = uppercase payoff aligned right.',
-  fields: ['pretitle', 'title', 'posttitle'], images: 1, zones: ['top', 'bottom'],
-  demo: { pretitle: 'Mały nadtytuł…', title: 'Główny Tytuł', posttitle: 'Podpis pod spodem' },
-  build: (ctx) => {
-    const t = toneOv(ctx)
-    return base(ctx, [
-      stack({
-        x: 100, w: 880, ...place(ctx.zone, 150),
-        blocks: [
-          tb('kicker', ctx.fields.pretitle, { overrides: { ...t, uppercase: true, size: 44 } }),
-          tb('title', ctx.fields.title, { marginTop: 4, overrides: { ...t, size: fit(ctx.fields.title, 132, 880, 0.48, 2, 80), lineHeight: 0.95 } }),
-          tb('kicker', ctx.fields.posttitle, { marginTop: 6, selfAlign: 'end', overrides: { ...t, uppercase: true, size: 44, align: 'right' } }),
-        ],
-      }),
-    ])
-  },
-}
-
-const edStatement: TemplateDef = {
-  id: 'ed-statement', family: 'editorial', role: 'statement',
-  name: 'Słowo + akapit',
-  description: 'Jedno słowo szeryfem, pod nim wyjustowany akapit, czerwona pętla.',
-  ai: 'Story beat. title = ONE lowercase word (serif), body = 1–2 sentences (≤ 30 words), mark 1 key word with **bold**.',
-  fields: ['title', 'body'], images: 1, zones: ['top', 'middle', 'bottom'],
-  demo: { title: 'słowo', body: 'Jedno lub dwa zdania rozwinięcia. Wyróżnij **kluczowe** słowo pogrubieniem, reszta zostaje lekka.' },
-  build: (ctx) => {
-    const t = toneOv(ctx)
-    const pos = place(ctx.zone, 80)
-    const els: El[] = [
-      stack({
-        x: 230, w: 620, ...pos,
-        blocks: [
-          tb('title', ctx.fields.title, { overrides: { ...t, align: 'center', size: fit(ctx.fields.title, 176, 620, 0.5, 1, 90) } }),
-          tb('body', ctx.fields.body, { marginTop: 14, overrides: { ...t, align: 'justify', size: 42, letterSpacing: 0.02 } }),
-        ],
-      }),
-    ]
-    if (ctx.zone === 'top') els.push(doodle({ kind: 'loop', x: 850, y: 150, w: 120, h: 320, color: ctx.preset.accent, stroke: 5 }))
-    return base(ctx, els)
-  },
-}
-
-const edNumber: TemplateDef = {
-  id: 'ed-number', family: 'editorial', role: 'content',
-  name: 'Punkt numerowany',
-  description: 'Odręczne „01.”, tytuł sekcji w 2 liniach, treść w wąskiej kolumnie.',
-  ai: 'Numbered step. number = "01." style, title = 2–4 words (Title Case), body = 1–2 short paragraphs (≤ 40 words total), separate paragraphs with a blank line.',
-  fields: ['number', 'title', 'body'], images: 1, zones: ['top', 'bottom'],
-  demo: { number: '01.', title: 'Tytuł Punktu', body: 'Krótki akapit, który wyjaśnia ten punkt w dwóch lub trzech zdaniach.\n\nDrugi akapit z jednym **ważnym** słowem.' },
-  build: (ctx) => {
-    const t = toneOv(ctx)
-    return base(ctx, [
-      stack({
-        x: 78, w: 520, ...place(ctx.zone, 88),
-        blocks: [
-          tb('number', ctx.fields.number, { overrides: t }),
-          tb('title', ctx.fields.title, { marginTop: -6, overrides: { ...t, size: fit(ctx.fields.title, 98, 520, 0.48, 2, 64), lineHeight: 0.95 } }),
-          tb('body', ctx.fields.body, { marginTop: 42, overrides: t }),
-        ],
-      }),
-    ])
-  },
-}
-
-const edInset: TemplateDef = {
-  id: 'ed-inset', family: 'editorial', role: 'content',
-  name: 'Wstawione zdjęcie + tekst',
-  description: 'Zaokrąglone zdjęcie po lewej, numer/tytuł/treść w prawej kolumnie. Wymaga 2 zdjęć.',
-  ai: 'Numbered step with a second photo inset on the left (needs 2 imageIds: [background, inset]). number, title (2–3 words), body ≤ 35 words.',
-  fields: ['number', 'title', 'body'], images: 2, zones: ['top'],
-  demo: { number: '02.', title: 'Kolejny Punkt', body: 'Treść obok wstawionego zdjęcia — krótko i konkretnie.\n\nDrugi akapit, jeśli jest potrzebny.' },
-  build: (ctx) => {
-    const t = toneOv(ctx)
-    return base(ctx, [
-      inset({ imageId: ctx.imageIds[1] ?? null }),
-      stack({
-        x: 500, w: 530, y: 110, anchor: 'top',
-        blocks: [
-          tb('number', ctx.fields.number, { overrides: t }),
-          tb('title', ctx.fields.title, { marginTop: -6, overrides: { ...t, size: fit(ctx.fields.title, 92, 530, 0.48, 2, 60), lineHeight: 0.95 } }),
-          tb('body', ctx.fields.body, { marginTop: 40, overrides: t }),
-        ],
-      }),
-    ])
-  },
-}
-
-const edList: TemplateDef = {
-  id: 'ed-list', family: 'editorial', role: 'list',
-  name: 'Nagłówek + lista',
-  description: 'Szeryfowy nagłówek przy samej krawędzi i lista z pogrubieniami.',
-  ai: 'List/recap. title = short heading ending with ":", bullets = 4–7 items, each ≤ 6 words with ONE **bold** keyword.',
-  fields: ['title', 'bullets'], images: 1, zones: ['top', 'bottom'],
-  demo: { title: 'Nagłówek listy:', bullets: ['pierwszy **punkt** listy', 'drugi **punkt** listy', 'trzeci **punkt** listy', 'czwarty **punkt** listy', 'piąty **punkt** listy'] },
-  build: (ctx) => {
-    const t = toneOv(ctx)
-    return base(ctx, [
-      stack({
-        x: 18, w: 1040, ...place(ctx.zone, 58),
-        blocks: [
-          tb('title', ctx.fields.title, { overrides: { ...t, size: fit(ctx.fields.title, 120, 1040, 0.5, 1, 70), lineHeight: 1 } }),
-          tb('list', bulletsText(ctx.fields.bullets), { marginTop: 8, overrides: t }),
-        ],
-      }),
-    ])
-  },
-}
-
-const edCta: TemplateDef = {
-  id: 'ed-cta', family: 'editorial', role: 'cta',
-  name: 'Skomentuj „SŁOWO”',
-  description: 'Wyśrodkowany stos: „skomentuj” / „SŁOWO” / linijka.',
-  ai: 'Final CTA. kicker = "comment"/"skomentuj" etc, keyword = ONE word (no quotes, it gets quoted), caption = reason, ≤ 6 words.',
-  fields: ['kicker', 'keyword', 'caption'], images: 1, zones: ['top', 'middle', 'bottom'],
-  demo: { kicker: 'skomentuj', keyword: 'SŁOWO', caption: 'i odbierz materiał' },
-  build: (ctx) => {
-    const t = toneOv(ctx)
-    const middle = ctx.zone !== 'top'
-    return base(ctx, [
-      stack({
-        x: middle ? 190 : 34, w: middle ? 700 : 450, ...place(ctx.zone, 100, 1200),
-        blocks: [
-          tb('kicker', ctx.fields.kicker, { overrides: { ...t, align: 'center', size: 36 } }),
-          tb('keyword', quoteWrap(ctx.fields.keyword), { marginTop: -2, overrides: { ...t, size: fit(ctx.fields.keyword + '""', 112, middle ? 700 : 450, 0.62, 1, 60) } }),
-          tb('kicker', ctx.fields.caption, { marginTop: 4, overrides: { ...t, align: 'center', size: 38 } }),
-        ],
-      }),
-    ])
-  },
-}
-
-// ── STORY ────────────────────────────────────────────────────
-const stHook: TemplateDef = {
-  id: 'st-hook', family: 'story', role: 'cover',
-  name: 'Hasło + podpis na dole',
-  description: 'Mały nadtytuł, HASŁO z podkreśleniem, linijka rozbita wokół głowy, podpis z wyróżnieniem na dole.',
-  ai: 'Hook slide. kicker = 1–3 lowercase words, title = 2–4 word CLAIM, subtitle = short line; put "||" in the middle to split it left/right around the subject\'s head. caption = bottom sentence with the payoff wrapped in ==highlight==.',
-  fields: ['kicker', 'title', 'subtitle', 'caption'], images: 1, zones: ['top'],
-  demo: { kicker: 'mały nadtytuł', title: 'główne hasło', subtitle: 'lewa część || prawa część', caption: 'Podpis na dole z ==wyróżnieniem==' },
-  build: (ctx) => {
-    const t = toneOv(ctx)
-    const els: El[] = [
-      stack({
-        x: 118, w: 850, y: 150, anchor: 'top',
-        blocks: [
-          tb('kicker', ctx.fields.kicker, { overrides: t }),
-          tb('title', ctx.fields.title, { marginTop: 8, overrides: { ...t, size: fit(ctx.fields.title, 88, 850, 0.66, 1, 64) } }),
-          tb('subtitle', ctx.fields.subtitle, { marginTop: 18, overrides: t }),
-        ],
-      }),
-    ]
-    if (ctx.fields.caption) els.push(stack({ x: 60, w: 960, y: 1225, anchor: 'bottom', blocks: [tb('caption', ctx.fields.caption)] }))
-    return base(ctx, els, { bottom: ctx.fields.caption ? 0.85 : 0 })
-  },
-}
-
-const stText: TemplateDef = {
-  id: 'st-text', family: 'story', role: 'content',
-  name: 'Etykieta + lista + akapity',
-  description: 'Fioletowa etykieta, punkty z pogrubieniami i krótkie akapity w górnej części.',
-  ai: 'Main content slide. title = short label (gets purple highlight), body = 1–3 short paragraphs (blank line between) — may end with ==highlighted phrase==, bullets = 0–4 items with **bold** keywords. Keep total ≤ 60 words.',
-  fields: ['title', 'body', 'bullets'], images: 1, zones: ['top', 'bottom'],
-  demo: { title: 'Etykieta', bullets: ['pierwszy punkt z **pogrubieniem**', 'drugi punkt z **pogrubieniem**', 'trzeci punkt z **pogrubieniem**'], body: 'Krótki akapit rozwinięcia.\n\nZdanie zakończone ==wyróżnieniem==' },
-  build: (ctx) => {
-    const t = toneOv(ctx)
-    const blocks: Block[] = []
-    if (ctx.fields.title) blocks.push(tb('caption', `==${ctx.fields.title.replace(/==/g, '')}==`, { overrides: { align: 'left', size: 36 } }))
-    if (ctx.fields.bullets.length) blocks.push(tb('list', bulletsText(ctx.fields.bullets), { marginTop: blocks.length ? 10 : 0, overrides: t }))
-    if (ctx.fields.body) blocks.push(tb('body', ctx.fields.body, { marginTop: blocks.length ? 42 : 0, overrides: t }))
-    const top = ctx.zone !== 'bottom'
-    return base(ctx, [stack({ x: 72, w: 936, ...place(ctx.zone, 86, 1240), blocks })], top ? { top: 0.55 } : { bottom: 0.85 })
-  },
-}
-
-const stChips: TemplateDef = {
-  id: 'st-chips', family: 'story', role: 'list',
-  name: 'Chipy (pigułki)',
-  description: 'Wyróżniony nagłówek i rzędy jasnych chipów nad ciemnym gradientem.',
-  ai: 'Ingredients/inputs slide. title = one sentence ending with ":" (gets highlight), chips = 3–7 items of 1–3 words, caption = optional bottom sentence.',
-  fields: ['title', 'chips', 'caption'], images: 1, zones: ['bottom'],
-  demo: { title: 'Nagłówek nad chipami:', chips: ['pierwszy', 'drugi chip', 'trzeci', 'czwarty chip', 'piąty', 'szósty'] },
-  build: (ctx) => {
-    const els: El[] = [
-      stack({
-        x: 60, w: 960, y: ctx.fields.caption ? 1090 : 1215, anchor: 'bottom',
-        blocks: [tb('caption', `==${ctx.fields.title.replace(/==/g, '')}==`, { overrides: { weight: 400, size: 36 } }), chips(ctx.fields.chips, 62)],
-      }),
-    ]
-    if (ctx.fields.caption) els.push(stack({ x: 80, w: 920, y: 1245, anchor: 'bottom', blocks: [tb('cta', ctx.fields.caption)] }))
-    return base(ctx, els, { bottom: 0.9 })
-  },
-}
-
-const stStatement: TemplateDef = {
-  id: 'st-statement', family: 'story', role: 'cta',
-  name: 'Teza + zrzut + CTA',
-  description: 'Zdanie na środku z dopiskiem, wstawiony zrzut ekranu, fioletowa strzałka i CTA na dole.',
-  ai: 'Closing slide. title = one bold statement sentence, note = small aside in parentheses, caption = CTA sentence (e.g. Comment "WORD" to …). Optional 2nd imageId = screenshot inset.',
-  fields: ['title', 'note', 'caption'], images: 2, zones: ['middle'],
-  demo: { title: 'Jedno mocne zdanie na środku slajdu', note: '(mały dopisek)', caption: 'Wezwanie do działania na dole slajdu' },
-  build: (ctx) => {
-    const hasInset = !!ctx.imageIds[1]
-    const els: El[] = [
-      stack({
-        x: 70, w: 940, y: hasInset ? 690 : 675, anchor: hasInset ? 'bottom' : 'center',
-        blocks: [tb('cta', ctx.fields.title, { overrides: { size: 50 } }), tb('note', ctx.fields.note, { marginTop: 2 })],
-      }),
-    ]
-    if (hasInset) {
-      els.push(inset({ imageId: ctx.imageIds[1], x: 334, y: 745, w: 412, h: 262, radius: 4 }))
-      els.push(doodle({ kind: 'curve', x: 770, y: 960, w: 100, h: 110, color: ctx.preset.accent, stroke: 4 }))
+  const b: Block[] = []
+  const gap = (n: number) => (b.length ? n : 0)
+  if (f.pretitle) b.push(tb('kicker', f.pretitle, { overrides: { uppercase: true } }))
+  if (f.kicker) b.push(tb('kicker', f.kicker, { marginTop: gap(4) }))
+  if (f.number) b.push(tb('number', f.number, { marginTop: gap(8) }))
+  if (f.title) {
+    // Story Highlight turns content headings into a highlighted label
+    if (story && (role === 'content' || role === 'list')) b.push(tb('caption', hl(f.title), { marginTop: gap(10), overrides: { size: 36 } }))
+    else {
+      const underline = story && role === 'cover' ? (r() < R.underline ? {} : { underline: null }) : {}
+      b.push(tb(role === 'cta' && !f.keyword ? 'cta' : 'title', f.title, { marginTop: gap(f.number ? -6 : 6), overrides: underline }))
     }
-    if (ctx.fields.caption) els.push(stack({ x: 80, w: 920, y: 1215, anchor: 'bottom', blocks: [tb('cta', ctx.fields.caption)] }))
-    return base(ctx, els, { bottom: 0.9 })
-  },
+  }
+  if (f.keyword) b.push(tb('keyword', quoteWrap(f.keyword), { marginTop: gap(2) }))
+  if (f.subtitle) b.push(tb('subtitle', f.subtitle, { marginTop: gap(role === 'cover' ? 4 : 12) }))
+  if (f.posttitle) b.push(tb('kicker', f.posttitle, { marginTop: gap(6), selfAlign: 'end', overrides: { uppercase: true, align: 'right' } }))
+  if (f.body) {
+    const justify = role === 'statement' && r() < R.justify ? { align: 'justify' as const } : {}
+    b.push(tb(role === 'cta' ? 'cta' : 'body', f.body, { marginTop: gap(f.title ? 30 : 14), overrides: justify }))
+  }
+  if (f.bullets.length) b.push(tb('list', bulletsText(f.bullets), { marginTop: gap(14) }))
+  if (f.chips.length) b.push(chips(f.chips, gap(44)))
+  if (f.note) b.push(tb('note', f.note, { marginTop: gap(8) }))
+
+  // a "comment KEYWORD" CTA reads as one lockup — keep its last line with it
+  if (role === 'cta' && f.keyword && f.caption) b.push(tb('kicker', f.caption, { marginTop: 6 }))
+  if (b.length) els.push(stack({ role: 'main', blocks: b }))
+  if (f.caption && !(role === 'cta' && f.keyword)) els.push(stack({ role: 'caption', blocks: [tb(role === 'cta' || role === 'statement' ? 'cta' : 'caption', f.caption)] }))
+  if (imageIds[1]) els.push(inset({ imageId: imageIds[1] }))
+
+  return { layout: 'single', role, slots: [slot(imageIds[0] ?? null)], bgColor: '#1d1718', overlay: ov(), elements: els }
 }
 
-const stCaption: TemplateDef = {
-  id: 'st-caption', family: 'story', role: 'content',
-  name: 'Sam podpis na dole',
-  description: 'Zdjęcie gra pierwsze skrzypce, jedno zdanie z wyróżnieniem na dole.',
-  ai: 'Minimal slide. caption = one sentence with ==highlight== on the payoff. Use for emotional/visual beats.',
-  fields: ['caption'], images: 1, zones: ['bottom', 'top'],
-  demo: { caption: 'Jedno zdanie z ==wyróżnieniem==' },
-  build: (ctx) =>
-    base(ctx, [stack({ x: 60, w: 960, ...place(ctx.zone, 120, 1225), blocks: [tb('caption', ctx.fields.caption)] })], ctx.zone === 'top' ? { top: 0.6 } : { bottom: 0.85 }),
+export interface BuildOpts {
+  preset: Preset
+  imageIds: string[]
+  fields: Partial<Fields>
+  analyses?: (Analysis | null | undefined)[]
+  seed?: number
+  hint?: Zone | 'auto'
 }
 
-// ── SPLIT ────────────────────────────────────────────────────
-const spSplit: TemplateDef = {
-  id: 'sp-split', family: 'split', role: 'split',
-  name: 'Podział 50/50',
-  description: 'Dwa zdjęcia jedno nad drugim, jedna linijka na środku każdej połowy. Wymaga 2 zdjęć.',
-  ai: 'Two stacked photos (needs 2 imageIds: [top, bottom]). top = question/claim (≤ 8 words), bottom = answer/punchline (≤ 10 words). Lowercase, may start with "→ ".',
-  fields: ['top', 'bottom'], images: 2, zones: ['middle'],
-  demo: { top: 'teza albo pytanie?', bottom: '→ odpowiedź albo puenta' },
-  build: (ctx) =>
-    base(
-      ctx,
-      [
-        stack({ x: 80, w: 920, y: 337, anchor: 'center', blocks: [tb('split', ctx.fields.top)] }),
-        stack({ x: 80, w: 920, y: 1012, anchor: 'center', blocks: [tb('split', ctx.fields.bottom)] }),
-      ],
-      {},
-      'split',
-    ),
+/** Content + style + photo → a positioned slide (random arrangement unless a seed is given). */
+export function buildSlide(tpl: TemplateDef | Role, o: BuildOpts): Slide {
+  const role = typeof tpl === 'string' ? tpl : tpl.role
+  const seed = o.seed ?? newSeed()
+  const fields = { ...emptyFields(), ...o.fields }
+  const s: Slide = { id: uid(), template: typeof tpl === 'string' ? undefined : tpl.id, ...compose(role, fields, o.imageIds, o.preset, seed) }
+  return arrange(s, o.preset, o.analyses ?? [], seed, { hint: o.hint, decorate: true })
 }
 
-const spSingle: TemplateDef = {
-  id: 'sp-single', family: 'split', role: 'statement',
-  name: 'Jedno zdjęcie + linijka',
-  description: 'Pełne zdjęcie, jedna wyśrodkowana linijka.',
-  ai: 'Single photo with one centered line. title = ≤ 10 words, lowercase.',
-  fields: ['title'], images: 1, zones: ['top', 'middle', 'bottom'],
-  demo: { title: 'jedna linijka na środku zdjęcia' },
-  build: (ctx) => base(ctx, [stack({ x: 80, w: 920, ...place(ctx.zone, 300, 1100), blocks: [tb('split', ctx.fields.title, { overrides: toneOv(ctx) })] })]),
-}
-
-const spCta: TemplateDef = {
-  id: 'sp-cta', family: 'split', role: 'cta',
-  name: 'Akapity na dole',
-  description: 'Krótkie wyśrodkowane akapity z pogrubieniami nad gradientem.',
-  ai: 'Final CTA. body = 3–4 very short paragraphs separated by blank lines, first one = comment "**WORD**", key words in **bold**.',
-  fields: ['body'], images: 1, zones: ['bottom'],
-  demo: { body: 'skomentuj **„SŁOWO”**\n\npierwszy krótki akapit z **pogrubieniem**\n\ndrugi krótki akapit\n\nostatnia linijka **zachęty**' },
-  build: (ctx) => base(ctx, [stack({ x: 90, w: 900, y: 1250, anchor: 'bottom', blocks: [tb('cta', ctx.fields.body)] })], { bottom: 0.75 }),
-}
-
+// ── structures shown in the Layouts panel (placeholder text only) ─────
 export const TEMPLATES: TemplateDef[] = [
-  edCover, edFramed, edStatement, edNumber, edInset, edList, edCta,
-  stHook, stText, stChips, stStatement, stCaption,
-  spSplit, spSingle, spCta,
+  { id: 'cover-title', role: 'cover', name: 'Tytuł + podtytuł', description: 'Duży tytuł z krótkim podtytułem.', images: 1, demo: { title: 'Twój Tytuł', subtitle: 'Krótki podtytuł' } },
+  { id: 'cover-framed', role: 'cover', name: 'Nadtytuł / tytuł / podpis', description: 'Tytuł w ramce z dwóch małych linijek.', images: 1, demo: { pretitle: 'Mały nadtytuł…', title: 'Główny Tytuł', posttitle: 'Podpis pod spodem' } },
+  { id: 'cover-hook', role: 'cover', name: 'Hasło + podpis na dole', description: 'Nadtytuł, hasło i zdanie na dole slajdu.', images: 1, demo: { kicker: 'mały nadtytuł', title: 'Główne hasło', caption: 'Podpis na dole z ==wyróżnieniem==' } },
+  { id: 'content-number', role: 'content', name: 'Punkt numerowany', description: 'Numer, tytuł punktu i akapit.', images: 1, demo: { number: '01.', title: 'Tytuł Punktu', body: 'Akapit, który wyjaśnia ten punkt pełnymi zdaniami.\n\nDrugi akapit z jednym **ważnym** słowem.' } },
+  { id: 'content-paragraph', role: 'content', name: 'Tytuł + akapit', description: 'Nagłówek i swobodny tekst.', images: 1, demo: { title: 'Nagłówek', body: 'Tutaj mieści się cała myśl — tekst dopasowuje się do slajdu, a nie odwrotnie.\n\nKolejny akapit, jeśli jest potrzebny.' } },
+  { id: 'content-label', role: 'content', name: 'Etykieta + lista + akapit', description: 'Krótka etykieta, punkty i zdanie podsumowania.', images: 1, demo: { title: 'Etykieta', bullets: ['pierwszy punkt z **pogrubieniem**', 'drugi punkt z **pogrubieniem**', 'trzeci punkt'], body: 'Zdanie podsumowania z ==wyróżnieniem==' } },
+  { id: 'content-inset', role: 'content', name: 'Wstawione zdjęcie + tekst', description: 'Drugie zdjęcie jako wstawka obok tekstu.', images: 2, demo: { number: '02.', title: 'Kolejny Punkt', body: 'Tekst obok wstawionego zdjęcia.\n\nDrugi akapit, jeśli trzeba.' } },
+  { id: 'list-bullets', role: 'list', name: 'Nagłówek + lista', description: 'Kilka punktów z pogrubionymi słowami.', images: 1, demo: { title: 'Nagłówek listy:', bullets: ['pierwszy **punkt** listy', 'drugi **punkt** listy', 'trzeci **punkt** listy', 'czwarty **punkt** listy'] } },
+  { id: 'list-chips', role: 'list', name: 'Chipy (pigułki)', description: 'Nagłówek i krótkie hasła w pigułkach.', images: 1, demo: { title: 'Nagłówek nad chipami:', chips: ['pierwszy', 'drugi chip', 'trzeci', 'czwarty chip', 'piąty'] } },
+  { id: 'statement-word', role: 'statement', name: 'Słowo + akapit', description: 'Jedno mocne słowo i rozwinięcie.', images: 1, demo: { title: 'słowo', body: 'Jedno lub dwa zdania rozwinięcia z **kluczowym** słowem.' } },
+  { id: 'statement-line', role: 'statement', name: 'Jedna linijka', description: 'Samo zdanie, dużo zdjęcia.', images: 1, demo: { title: 'jedna linijka na zdjęciu' } },
+  { id: 'statement-caption', role: 'statement', name: 'Sam podpis', description: 'Zdjęcie gra, jedno zdanie na dole.', images: 1, demo: { caption: 'Jedno zdanie z ==wyróżnieniem==' } },
+  { id: 'split-2', role: 'split', name: 'Podział 50/50', description: 'Dwa zdjęcia, teza i odpowiedź.', images: 2, demo: { top: 'teza albo pytanie?', bottom: '→ odpowiedź albo puenta' } },
+  { id: 'cta-keyword', role: 'cta', name: 'Skomentuj „SŁOWO”', description: 'Słowo-klucz do komentarza.', images: 1, demo: { kicker: 'skomentuj', keyword: 'SŁOWO', caption: 'i odbierz materiał' } },
+  { id: 'cta-paragraphs', role: 'cta', name: 'Akapity CTA', description: 'Kilka krótkich zdań zachęty.', images: 1, demo: { body: 'skomentuj **„SŁOWO”**\n\npierwszy krótki akapit z **pogrubieniem**\n\nostatnia linijka **zachęty**' } },
+  { id: 'cta-inset', role: 'cta', name: 'Teza + wstawka + CTA', description: 'Zdanie, zrzut ekranu i wezwanie na dole.', images: 2, demo: { title: 'Jedno mocne zdanie', note: '(mały dopisek)', caption: 'Wezwanie do działania na dole slajdu' } },
 ]
 
 export const templateById = (id: string) => TEMPLATES.find((t) => t.id === id)
 
-/** Groups used to organise layouts in the manual editor, in carousel order. */
-export const ROLE_GROUPS: { role: TemplateDef['role']; label: string; hint: string }[] = [
+/** Groups used to organise structures in the manual editor, in carousel order. */
+export const ROLE_GROUPS: { role: Role; label: string; hint: string }[] = [
   { role: 'cover', label: 'Okładka', hint: 'pierwszy slajd — hook' },
   { role: 'content', label: 'Treść', hint: 'jeden punkt na slajd' },
   { role: 'list', label: 'Lista', hint: 'kilka punktów naraz' },
@@ -433,11 +182,6 @@ export const ROLE_GROUPS: { role: TemplateDef['role']; label: string; hint: stri
   { role: 'split', label: 'Podział 50/50', hint: 'dwa zdjęcia, dwie linijki' },
   { role: 'cta', label: 'Zakończenie / CTA', hint: 'ostatni slajd' },
 ]
-
-export const buildSlide = (tpl: TemplateDef, ctx: Omit<BuildCtx, 'fields'> & { fields: Partial<Fields> }): Slide => {
-  const fields = { ...emptyFields(), ...ctx.fields }
-  return { id: uid(), template: tpl.id, ...tpl.build({ ...ctx, fields }) }
-}
 
 export const blankSlide = (): Slide => ({
   id: uid(),

@@ -75,12 +75,12 @@ const loadSettings = (): Settings => {
 
 const starterProject = (): Project => {
   const preset = BUILTIN_PRESETS[0]
-  const tpl = templateById('ed-cover')!
+  const tpl = templateById('cover-title')!
   return {
     id: uid(),
     name: 'Mój pierwszy post',
     presetId: preset.id,
-    slides: [buildSlide(tpl, { preset, zone: 'top', tone: 'light', imageIds: [], fields: tpl.demo })],
+    slides: [buildSlide(tpl, { preset, imageIds: [], fields: tpl.demo })],
     updatedAt: Date.now(),
   }
 }
@@ -355,6 +355,12 @@ export const useStore = create<State>((set, get) => {
 })
 
 export const allPresets = (custom: Preset[]) => [...BUILTIN_PRESETS, ...custom]
+
+/** Current project's preset, for use outside React components. */
+export const getPreset = (): Preset => {
+  const { project, customPresets } = useStore.getState()
+  return allPresets(customPresets).find((p) => p.id === project.presetId) ?? BUILTIN_PRESETS[0]
+}
 
 export const usePreset = (): Preset => {
   const presetId = useStore((s) => s.project.presetId)

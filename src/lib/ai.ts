@@ -1,8 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { BetaContentBlockParam, BetaMessageParam } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { STYLE_LABELS } from '../presets'
-import { FIELD_KEYS, TEMPLATES, type Fields } from '../presets/templates'
-import type { GalleryImage, Preset, Tone, Zone } from '../types'
+import { FIELD_KEYS, type Fields } from '../presets/templates'
+import type { GalleryImage, Preset, Role, Zone } from '../types'
 import { describe, type Analysis } from './analyze'
 import { loadImg } from './util'
 
@@ -13,10 +13,10 @@ export const MODELS = [
 ]
 
 export interface AiSlide {
-  template: string
+  purpose: string
+  role: Role
   imageIds: string[]
-  zone: Zone
-  tone: Tone
+  zone: Zone | 'auto'
   fields: Fields
 }
 export interface AiCarousel {
@@ -41,7 +41,9 @@ export async function imageToBase64(img: GalleryImage, edge = 768) {
   return cv.toDataURL('image/jpeg', 0.8).split(',')[1]
 }
 
-const schema = (templateIds: string[]) => ({
+const ROLES: Role[] = ['cover', 'content', 'list', 'statement', 'split', 'cta']
+
+const schema = {
   type: 'object',
   additionalProperties: false,
   required: ['title', 'slides'],
@@ -52,12 +54,12 @@ const schema = (templateIds: string[]) => ({
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['template', 'imageIds', 'zone', 'tone', 'fields'],
+        required: ['purpose', 'role', 'imageIds', 'zone', 'fields'],
         properties: {
-          template: { type: 'string', enum: templateIds },
+          purpose: { type: 'string', description: "Which part of the user's request this slide delivers (one sentence, used to check coverage)" },
+          role: { type: 'string', enum: ROLES },
           imageIds: { type: 'array', items: { type: 'string' } },
-          zone: { type: 'string', enum: ['top', 'middle', 'bottom'] },
-          tone: { type: 'string', enum: ['light', 'dark'] },
+          zone: { type: 'string', enum: ['top', 'middle', 'bottom', 'auto'] },
           fields: {
             type: 'object',
             additionalProperties: false,
@@ -70,30 +72,37 @@ const schema = (templateIds: string[]) => ({
       },
     },
   },
-})
+}
 
-const systemPrompt = (preset: Preset) => {
-  const tpls = TEMPLATES.filter((t) => t.family === preset.family)
-  return `You design Instagram carousel posts (4:5, 1080×1350) inside the "Postify" editor.
+const systemPrompt = (preset: Preset) => `You write and plan Instagram carousel posts (4:5) inside the "Postify" editor. You decide the CONTENT of each slide; Postify's layout engine then arranges it automatically — positions, sizes and alignment are randomised within the visual style and adapt to however much text you write.
 
-VISUAL STYLE — preset "${preset.name}": ${preset.description}
-Style rules extracted from the creator's reference posts:
+VISUAL STYLE — "${preset.name}": ${preset.description}
+Style notes (typography and mood only — ignore any exact positions, the engine handles placement):
 ${preset.analysis.map((a) => `- ${a}`).join('\n')}
 
-TEMPLATES you can use (id — purpose, fields it reads, allowed zones, photos needed):
-${tpls.map((t) => `- ${t.id} — ${t.ai} | fields: ${t.fields.join(', ')} | zones: ${t.zones.join('/')} | photos: ${t.images}`).join('\n')}
+FOLLOW THE USER'S REQUEST FIRST
+- If the user describes slides one by one, make exactly those slides, in that order, and put ALL of the content they asked for on each one. Do not merge, skip or reorder their slides.
+- Write complete sentences and complete thoughts. Never cut a sentence short or drop an idea to make it "fit" — the layout adapts to the text. Clarity beats brevity.
+- Keep the user's tone instructions. Use their facts and wording where given; never invent statistics or results.
+- Write in the language of the request, with that language's typography (Polish → „ ” quotes).
+- As a guide, 15–60 words per slide reads well on a phone; go longer when the user's content needs it rather than cutting it.
 
-TEXT MARKUP inside fields: **bold** for key words, ==highlight== for the one phrase that deserves a colour box, blank line (\\n\\n) between paragraphs, "||" to split one line to left/right edges (st-hook subtitle only). Do not put "- " inside bullets/chips items.
+SLIDE ROLES (one per slide)
+- cover — the hook: title (+ subtitle or kicker); optional caption = a sentence pinned to the bottom.
+- content — one idea explained: title + body paragraphs; optional number ("01."), bullets.
+- list — several points: title + bullets, or title + chips (short 1–3 word tags).
+- statement — one strong line or word, optional short body; lots of photo visible.
+- split — two photos stacked 50/50: top = claim/question, bottom = answer. Needs 2 imageIds.
+- cta — the closing call to action: kicker ("skomentuj") + keyword (one word, no quotes) + caption, OR body with short paragraphs.
 
-HOW TO BUILD THE CAROUSEL
-1. Slide 1 is a scroll-stopping hook (cover template). Middle slides deliver value — one idea per slide, very few words, conversational tone like the references (short, punchy, lowercase is fine). Last slide is a CTA (comment a keyword / save / follow).
-2. Write ALL text in the same language as the user's request (Polish request → Polish post). Use proper typography for that language (Polish quotes „ ”).
-3. Pick photos by looking at them: match mood/content to each slide, avoid using the same photo twice in a row, prefer photos with calm empty areas (sky, wall, floor) for text-heavy slides. Only use imageIds from the provided list. Give each slide exactly as many imageIds as its template needs.
-4. zone = where the text goes. Choose the calm area of the photo that does NOT cover faces or the main subject (use the brightness/busy stats given per photo: lower busy = calmer). Must be one of the template's allowed zones.
-5. tone = "dark" only when the text sits on a bright area (brightness > ~0.62, e.g. fog/sky/white wall); otherwise "light" (white text + shadow).
-6. Fill unused fields with "" or [].
-7. Respect length limits — text must fit on a phone screen. Never invent statistics.`
-}
+FIELDS — fill only what the slide needs, "" or [] for the rest:
+kicker (small line above the title), pretitle / posttitle (small uppercase lines framing a title), number, title, subtitle, body (paragraphs separated by a blank line), bullets (items without "- "), chips, keyword, note (small aside), caption (sentence pinned to the bottom), top / bottom (split only).
+Markup inside text: **bold** for key words, ==highlight== for the one phrase per slide that deserves a colour box.
+
+PHOTOS
+- Look at the photos and match each slide's meaning and mood; avoid repeating a photo on consecutive slides when there are enough. Only use the given imageIds.
+- 1 imageId per slide (2 for split, or 2 when the second photo should appear as an inset next to the text).
+- zone = where the text should sit so it doesn't cover faces or the main subject (use the per-photo brightness/busy stats: lower busy = calmer). Use "auto" if unsure.`
 
 export interface GenerateInput {
   apiKey: string
@@ -106,7 +115,6 @@ export interface GenerateInput {
 }
 
 export async function generateCarousel(inp: GenerateInput): Promise<{ result: AiCarousel; history: BetaMessageParam[] }> {
-  const tplIds = TEMPLATES.filter((t) => t.family === inp.preset.family).map((t) => t.id)
   const content: BetaContentBlockParam[] = []
 
   if (!inp.history.length) {
@@ -120,7 +128,10 @@ export async function generateCarousel(inp: GenerateInput): Promise<{ result: Ai
       content.push({ type: 'text', text: 'No photos are available — return empty imageIds arrays; the user will add photos manually.' })
     }
   }
-  const count = inp.slideCount === 'auto' ? 'Choose the best number of slides (usually 5–8).' : `Make exactly ${inp.slideCount} slides.`
+  const count =
+    inp.slideCount === 'auto'
+      ? "Use the number of slides the request asks for; if it doesn't say, choose what the story needs (usually 5–8)."
+      : `Make exactly ${inp.slideCount} slides.`
   content.push({
     type: 'text',
     text: inp.history.length
@@ -134,7 +145,7 @@ export async function generateCarousel(inp: GenerateInput): Promise<{ result: Ai
     max_tokens: 32000,
     system: systemPrompt(inp.preset),
     messages,
-    output_config: { format: { type: 'json_schema', schema: schema(tplIds) } },
+    output_config: { format: { type: 'json_schema', schema } },
     ...fallbackParams(inp.model),
   })
   const msg = await stream.finalMessage()
@@ -149,7 +160,7 @@ export async function generateCarousel(inp: GenerateInput): Promise<{ result: Ai
   }
   const valid = new Set(inp.images.map((i) => i.img.id))
   result.slides = result.slides
-    .filter((s) => tplIds.includes(s.template))
+    .filter((s) => ROLES.includes(s.role))
     .map((s) => ({ ...s, imageIds: s.imageIds.filter((id) => valid.has(id)) }))
   return { result, history: [...messages, { role: 'assistant', content: [{ type: 'text', text }] }] }
 }
