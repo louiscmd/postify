@@ -40,7 +40,11 @@ const Section = ({ title, children, right }: { title: string; children: ReactNod
 )
 
 const ALIGN_OPTS: [TextStyle['align'], string][] = [['left', 'Lewo'], ['center', 'Środek'], ['right', 'Prawo'], ['justify', 'Justuj']]
-const ADD_KEYS: StyleKey[] = ['title', 'subtitle', 'kicker', 'body', 'list', 'number', 'keyword', 'caption', 'cta', 'note', 'split']
+const ADD_GROUPS: { label: string; keys: StyleKey[] }[] = [
+  { label: 'Nagłówki', keys: ['title', 'subtitle', 'kicker', 'number', 'keyword'] },
+  { label: 'Treść', keys: ['body', 'list', 'note', 'split'] },
+  { label: 'Dół slajdu / CTA', keys: ['caption', 'cta'] },
+]
 const DEMO: Partial<Record<StyleKey, string>> = {
   title: 'Twój tytuł',
   subtitle: 'Podtytuł',
@@ -50,7 +54,7 @@ const DEMO: Partial<Record<StyleKey, string>> = {
   number: '01.',
   keyword: '“SŁOWO”',
   caption: 'Podpis z ==wyróżnieniem==',
-  cta: 'skomentuj **„SŁOWO”**, a wyślę ci resztę',
+  cta: 'Wezwanie do działania z **pogrubieniem**',
   note: '(mały dopisek)',
   split: 'jedna linijka na środku',
 }
@@ -470,14 +474,26 @@ function SlideInspector() {
   return (
     <>
       <Section title="Dodaj do slajdu">
-        <span className="mini-label">Tekst w stylu „{preset.name}” (trafi w najspokojniejsze miejsce zdjęcia)</span>
+        <span className="mini-label">Tekst w stylu „{preset.name}” — trafi w najspokojniejsze miejsce zdjęcia</span>
+        {ADD_GROUPS.map((g) => (
+          <div key={g.label} style={{ marginBottom: 8 }}>
+            <span className="mini-label" style={{ color: 'var(--muted)' }}>
+              {g.label}
+            </span>
+            <div className="add-grid">
+              {g.keys.map((k) => (
+                <button key={k} className="btn sm" onClick={() => addText(k)}>
+                  <Plus size={13} /> {STYLE_LABELS[k]}
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+        <span className="mini-label" style={{ color: 'var(--muted)' }}>
+          Inne elementy
+        </span>
         <div className="add-grid">
-          {ADD_KEYS.map((k) => (
-            <button key={k} className="btn sm" onClick={() => addText(k)}>
-              <Plus size={13} /> {STYLE_LABELS[k]}
-            </button>
-          ))}
-          <button className="btn sm" onClick={() => st().addEl(makeStack({ x: 60, w: 960, y: 1150, anchor: 'bottom', blocks: [makeChips(['notatka głosowa', 'rozmowy', 'DM-y', 'problemy klientów'])] }))}>
+          <button className="btn sm" onClick={() => st().addEl(makeStack({ x: 60, w: 960, y: 1150, anchor: 'bottom', blocks: [makeChips(['pierwszy', 'drugi chip', 'trzeci', 'czwarty chip'])] }))}>
             <Pill size={13} /> Chipy
           </button>
           <button className="btn sm" onClick={() => st().addEl(makeInset({}))}>

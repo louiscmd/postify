@@ -267,3 +267,16 @@ input[type='checkbox'] { accent-color: var(--accent); }
 @media (max-width: 1250px) {
   .body { grid-template-columns: 290px 1fr 310px; }
 }
+
+/* ── layouts: style picker + groups ─────── */
+.style-pick { display: flex; flex-direction: column; gap: 6px; }
+.style-pick button {
+  text-align: left; border: 1px solid var(--line); background: var(--panel-2); border-radius: var(--r-sm); padding: 8px 10px; cursor: pointer;
+  display: flex; flex-direction: column; gap: 2px; transition: border-color 0.12s, background 0.12s;
+}
+.style-pick button:hover { border-color: var(--line-2); background: var(--panel-3); }
+.style-pick button.on { border-color: var(--accent-line); background: var(--accent-soft); }
+.style-pick button.on b { color: var(--accent); }
+.style-pick b { font-size: 13px; }
+.style-pick span { font-size: 11.5px; color: var(--dim); line-height: 1.35; }
+.group-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid var(--line); }

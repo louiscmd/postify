@@ -24,10 +24,10 @@ const useChat = create<{ msgs: ChatMsg[]; history: BetaMessageParam[]; projectId
 }))
 
 const SUGGESTIONS = [
-  'Zrób mi post o tym, jak zacząć budować markę osobistą od zera',
-  'Karuzela: 5 błędów, przez które twoje rolki nie mają wyświetleń',
-  'Post o tym, dlaczego AI pisze nudny content i jak to naprawić',
-  'Historia klienta: jak z 0 do 10k obserwujących w 3 miesiące',
+  'Zrób mi post o porannej rutynie, która daje energię na cały dzień',
+  'Karuzela: 5 błędów, które popełnia każdy początkujący fotograf',
+  'Post o tym, jak zaplanować tani weekend w nowym mieście',
+  'Krótka historia: czego nauczył mnie pierwszy rok prowadzenia firmy',
 ]
 
 const MAX_IMAGES = 20

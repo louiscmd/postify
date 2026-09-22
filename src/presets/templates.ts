@@ -123,11 +123,11 @@ const base = (ctx: BuildCtx, elements: El[], overlay: Partial<Overlay> = {}, lay
 // ── EDITORIAL ────────────────────────────────────────────────
 const edCover: TemplateDef = {
   id: 'ed-cover', family: 'editorial', role: 'cover',
-  name: 'Okładka — tytuł + podtytuł',
+  name: 'Tytuł + podtytuł',
   description: 'Ogromny szeryf, pod nim kapitaliki, strzałka prowadząca do zdjęcia.',
   ai: 'Cover/hook slide. title = 1–3 punchy words (big serif), subtitle = short uppercase line (2–4 words).',
   fields: ['title', 'subtitle'], images: 1, zones: ['top', 'bottom'],
-  demo: { title: 'Uczę Ją', subtitle: 'Budowania marki osobistej' },
+  demo: { title: 'Twój Tytuł', subtitle: 'Krótki podtytuł' },
   build: (ctx) => {
     const t = toneOv(ctx)
     const els: El[] = [
@@ -146,11 +146,11 @@ const edCover: TemplateDef = {
 
 const edFramed: TemplateDef = {
   id: 'ed-framed', family: 'editorial', role: 'cover',
-  name: 'Okładka — nad / tytuł / pod',
+  name: 'Nadtytuł / tytuł / podpis',
   description: 'Nadtytuł do lewej, szeryf, podpis wyrównany do prawej krawędzi.',
   ai: 'Alternative cover. pretitle = short uppercase lead-in ending with "…", title = 2–3 word serif headline, posttitle = uppercase payoff aligned right.',
   fields: ['pretitle', 'title', 'posttitle'], images: 1, zones: ['top', 'bottom'],
-  demo: { pretitle: 'Jak zbudować…', title: 'Markę Osobistą', posttitle: 'Która działa w 2026' },
+  demo: { pretitle: 'Mały nadtytuł…', title: 'Główny Tytuł', posttitle: 'Podpis pod spodem' },
   build: (ctx) => {
     const t = toneOv(ctx)
     return base(ctx, [
@@ -172,7 +172,7 @@ const edStatement: TemplateDef = {
   description: 'Jedno słowo szeryfem, pod nim wyjustowany akapit, czerwona pętla.',
   ai: 'Story beat. title = ONE lowercase word (serif), body = 1–2 sentences (≤ 30 words), mark 1 key word with **bold**.',
   fields: ['title', 'body'], images: 1, zones: ['top', 'middle', 'bottom'],
-  demo: { title: 'odsłonięte', body: 'a potem, gdy zrozumiałem ile to jest warte, opublikowałem to na **youtube** całkowicie za darmo' },
+  demo: { title: 'słowo', body: 'Jedno lub dwa zdania rozwinięcia. Wyróżnij **kluczowe** słowo pogrubieniem, reszta zostaje lekka.' },
   build: (ctx) => {
     const t = toneOv(ctx)
     const pos = place(ctx.zone, 80)
@@ -196,7 +196,7 @@ const edNumber: TemplateDef = {
   description: 'Odręczne „01.”, tytuł sekcji w 2 liniach, treść w wąskiej kolumnie.',
   ai: 'Numbered step. number = "01." style, title = 2–4 words (Title Case), body = 1–2 short paragraphs (≤ 40 words total), separate paragraphs with a blank line.',
   fields: ['number', 'title', 'body'], images: 1, zones: ['top', 'bottom'],
-  demo: { number: '01.', title: 'Odkryj Swoją Niszę', body: 'Twoja marka osobista zaczyna się od zrozumienia, co czyni cię innym i niezapomnianym.\n\nZawsze powtarzam klientom: „marka osobista nazywa się osobista nie bez powodu”.' },
+  demo: { number: '01.', title: 'Tytuł Punktu', body: 'Krótki akapit, który wyjaśnia ten punkt w dwóch lub trzech zdaniach.\n\nDrugi akapit z jednym **ważnym** słowem.' },
   build: (ctx) => {
     const t = toneOv(ctx)
     return base(ctx, [
@@ -218,7 +218,7 @@ const edInset: TemplateDef = {
   description: 'Zaokrąglone zdjęcie po lewej, numer/tytuł/treść w prawej kolumnie. Wymaga 2 zdjęć.',
   ai: 'Numbered step with a second photo inset on the left (needs 2 imageIds: [background, inset]). number, title (2–3 words), body ≤ 35 words.',
   fields: ['number', 'title', 'body'], images: 2, zones: ['top'],
-  demo: { number: '02.', title: 'Określ Swoje Wartości', body: 'Bez wartości gonisz trendy i się wypalasz. Z wartościami budujesz spójność i jasność.\n\nZdefiniuj, co znaczy sukces poza pieniędzmi.' },
+  demo: { number: '02.', title: 'Kolejny Punkt', body: 'Treść obok wstawionego zdjęcia — krótko i konkretnie.\n\nDrugi akapit, jeśli jest potrzebny.' },
   build: (ctx) => {
     const t = toneOv(ctx)
     return base(ctx, [
@@ -237,11 +237,11 @@ const edInset: TemplateDef = {
 
 const edList: TemplateDef = {
   id: 'ed-list', family: 'editorial', role: 'list',
-  name: 'Lista',
+  name: 'Nagłówek + lista',
   description: 'Szeryfowy nagłówek przy samej krawędzi i lista z pogrubieniami.',
   ai: 'List/recap. title = short heading ending with ":", bullets = 4–7 items, each ≤ 6 words with ONE **bold** keyword.',
   fields: ['title', 'bullets'], images: 1, zones: ['top', 'bottom'],
-  demo: { title: 'Pokazałem jak:', bullets: ['**uporządkować** swoje konto', '**pozycjonować** się na rynku', 'robić **research** właściwie', 'mieć za dużo **pomysłów**', '**planować + pisać** filmy', 'przestać komplikować **publikację**'] },
+  demo: { title: 'Nagłówek listy:', bullets: ['pierwszy **punkt** listy', 'drugi **punkt** listy', 'trzeci **punkt** listy', 'czwarty **punkt** listy', 'piąty **punkt** listy'] },
   build: (ctx) => {
     const t = toneOv(ctx)
     return base(ctx, [
@@ -258,11 +258,11 @@ const edList: TemplateDef = {
 
 const edCta: TemplateDef = {
   id: 'ed-cta', family: 'editorial', role: 'cta',
-  name: 'CTA — komentarz',
+  name: 'Skomentuj „SŁOWO”',
   description: 'Wyśrodkowany stos: „skomentuj” / „SŁOWO” / linijka.',
   ai: 'Final CTA. kicker = "comment"/"skomentuj" etc, keyword = ONE word (no quotes, it gets quoted), caption = reason, ≤ 6 words.',
   fields: ['kicker', 'keyword', 'caption'], images: 1, zones: ['top', 'middle', 'bottom'],
-  demo: { kicker: 'skomentuj', keyword: 'ZERO', caption: 'aby dostać pełny film' },
+  demo: { kicker: 'skomentuj', keyword: 'SŁOWO', caption: 'i odbierz materiał' },
   build: (ctx) => {
     const t = toneOv(ctx)
     const middle = ctx.zone !== 'top'
@@ -282,11 +282,11 @@ const edCta: TemplateDef = {
 // ── STORY ────────────────────────────────────────────────────
 const stHook: TemplateDef = {
   id: 'st-hook', family: 'story', role: 'cover',
-  name: 'Hook — hasło + podpis',
+  name: 'Hasło + podpis na dole',
   description: 'Mały nadtytuł, HASŁO z podkreśleniem, linijka rozbita wokół głowy, podpis z wyróżnieniem na dole.',
   ai: 'Hook slide. kicker = 1–3 lowercase words, title = 2–4 word CLAIM, subtitle = short line; put "||" in the middle to split it left/right around the subject\'s head. caption = bottom sentence with the payoff wrapped in ==highlight==.',
   fields: ['kicker', 'title', 'subtitle', 'caption'], images: 1, zones: ['top'],
-  demo: { kicker: 'większość ludzi', title: 'używa AI do contentu', subtitle: 'jak babcia || pilota od telewizora', caption: 'Klika i liczy, że to ==ten właściwy==' },
+  demo: { kicker: 'mały nadtytuł', title: 'główne hasło', subtitle: 'lewa część || prawa część', caption: 'Podpis na dole z ==wyróżnieniem==' },
   build: (ctx) => {
     const t = toneOv(ctx)
     const els: El[] = [
@@ -310,7 +310,7 @@ const stText: TemplateDef = {
   description: 'Fioletowa etykieta, punkty z pogrubieniami i krótkie akapity w górnej części.',
   ai: 'Main content slide. title = short label (gets purple highlight), body = 1–3 short paragraphs (blank line between) — may end with ==highlighted phrase==, bullets = 0–4 items with **bold** keywords. Keep total ≤ 60 words.',
   fields: ['title', 'body', 'bullets'], images: 1, zones: ['top', 'bottom'],
-  demo: { title: 'Nie ma pojęcia', bullets: ['co zrobiło twoje ostatnie **20 postów**', 'które hooki naprawdę **działały**', 'jak **normalnie mówisz** bez skryptu'], body: 'Więc wypełnia luki średnią z całego internetu.\n\nDlatego twój content brzmi jak ==papka==' },
+  demo: { title: 'Etykieta', bullets: ['pierwszy punkt z **pogrubieniem**', 'drugi punkt z **pogrubieniem**', 'trzeci punkt z **pogrubieniem**'], body: 'Krótki akapit rozwinięcia.\n\nZdanie zakończone ==wyróżnieniem==' },
   build: (ctx) => {
     const t = toneOv(ctx)
     const blocks: Block[] = []
@@ -328,7 +328,7 @@ const stChips: TemplateDef = {
   description: 'Wyróżniony nagłówek i rzędy jasnych chipów nad ciemnym gradientem.',
   ai: 'Ingredients/inputs slide. title = one sentence ending with ":" (gets highlight), chips = 3–7 items of 1–3 words, caption = optional bottom sentence.',
   fields: ['title', 'chips', 'caption'], images: 1, zones: ['bottom'],
-  demo: { title: 'Daliśmy mu wszystko, co już miał:', chips: ['notatka głosowa', 'unikalny mechanizm', 'info o firmie', 'rozmowy sprzedażowe', 'problemy klientów', 'DM-y'] },
+  demo: { title: 'Nagłówek nad chipami:', chips: ['pierwszy', 'drugi chip', 'trzeci', 'czwarty chip', 'piąty', 'szósty'] },
   build: (ctx) => {
     const els: El[] = [
       stack({
@@ -347,7 +347,7 @@ const stStatement: TemplateDef = {
   description: 'Zdanie na środku z dopiskiem, wstawiony zrzut ekranu, fioletowa strzałka i CTA na dole.',
   ai: 'Closing slide. title = one bold statement sentence, note = small aside in parentheses, caption = CTA sentence (e.g. Comment "WORD" to …). Optional 2nd imageId = screenshot inset.',
   fields: ['title', 'note', 'caption'], images: 2, zones: ['middle'],
-  demo: { title: 'Jeśli brzmisz jak AI, problemem nie jest AI', note: '(to skill issue 😭)', caption: 'Skomentuj „ekosystem”, a pokażę ci jak naprawiłem Claude dla klienta' },
+  demo: { title: 'Jedno mocne zdanie na środku slajdu', note: '(mały dopisek)', caption: 'Wezwanie do działania na dole slajdu' },
   build: (ctx) => {
     const hasInset = !!ctx.imageIds[1]
     const els: El[] = [
@@ -371,7 +371,7 @@ const stCaption: TemplateDef = {
   description: 'Zdjęcie gra pierwsze skrzypce, jedno zdanie z wyróżnieniem na dole.',
   ai: 'Minimal slide. caption = one sentence with ==highlight== on the payoff. Use for emotional/visual beats.',
   fields: ['caption'], images: 1, zones: ['bottom', 'top'],
-  demo: { caption: 'Klika i liczy, że to ==ten właściwy==' },
+  demo: { caption: 'Jedno zdanie z ==wyróżnieniem==' },
   build: (ctx) =>
     base(ctx, [stack({ x: 60, w: 960, ...place(ctx.zone, 120, 1225), blocks: [tb('caption', ctx.fields.caption)] })], ctx.zone === 'top' ? { top: 0.6 } : { bottom: 0.85 }),
 }
@@ -383,7 +383,7 @@ const spSplit: TemplateDef = {
   description: 'Dwa zdjęcia jedno nad drugim, jedna linijka na środku każdej połowy. Wymaga 2 zdjęć.',
   ai: 'Two stacked photos (needs 2 imageIds: [top, bottom]). top = question/claim (≤ 8 words), bottom = answer/punchline (≤ 10 words). Lowercase, may start with "→ ".',
   fields: ['top', 'bottom'], images: 2, zones: ['middle'],
-  demo: { top: 'hashtagi? bez znaczenia', bottom: 'godziny publikacji? też bez znaczenia' },
+  demo: { top: 'teza albo pytanie?', bottom: '→ odpowiedź albo puenta' },
   build: (ctx) =>
     base(
       ctx,
@@ -402,17 +402,17 @@ const spSingle: TemplateDef = {
   description: 'Pełne zdjęcie, jedna wyśrodkowana linijka.',
   ai: 'Single photo with one centered line. title = ≤ 10 words, lowercase.',
   fields: ['title'], images: 1, zones: ['top', 'middle', 'bottom'],
-  demo: { title: 'wyświetlenia sprowadzają się do jednego:' },
+  demo: { title: 'jedna linijka na środku zdjęcia' },
   build: (ctx) => base(ctx, [stack({ x: 80, w: 920, ...place(ctx.zone, 300, 1100), blocks: [tb('split', ctx.fields.title, { overrides: toneOv(ctx) })] })]),
 }
 
 const spCta: TemplateDef = {
   id: 'sp-cta', family: 'split', role: 'cta',
-  name: 'CTA — akapity na dole',
+  name: 'Akapity na dole',
   description: 'Krótkie wyśrodkowane akapity z pogrubieniami nad gradientem.',
   ai: 'Final CTA. body = 3–4 very short paragraphs separated by blank lines, first one = comment "**WORD**", key words in **bold**.',
   fields: ['body'], images: 1, zones: ['bottom'],
-  demo: { body: 'skomentuj **„ZERO”**\n\njeśli chcesz pominąć **lata** prób i błędów\n\nnauczyłem dziewczynę **marki osobistej** od zera na kamerze\n\nmożesz obejrzeć całość **za darmo**' },
+  demo: { body: 'skomentuj **„SŁOWO”**\n\npierwszy krótki akapit z **pogrubieniem**\n\ndrugi krótki akapit\n\nostatnia linijka **zachęty**' },
   build: (ctx) => base(ctx, [stack({ x: 90, w: 900, y: 1250, anchor: 'bottom', blocks: [tb('cta', ctx.fields.body)] })], { bottom: 0.75 }),
 }
 
@@ -423,6 +423,16 @@ export const TEMPLATES: TemplateDef[] = [
 ]
 
 export const templateById = (id: string) => TEMPLATES.find((t) => t.id === id)
+
+/** Groups used to organise layouts in the manual editor, in carousel order. */
+export const ROLE_GROUPS: { role: TemplateDef['role']; label: string; hint: string }[] = [
+  { role: 'cover', label: 'Okładka', hint: 'pierwszy slajd — hook' },
+  { role: 'content', label: 'Treść', hint: 'jeden punkt na slajd' },
+  { role: 'list', label: 'Lista', hint: 'kilka punktów naraz' },
+  { role: 'statement', label: 'Akcent', hint: 'jedna myśl, dużo zdjęcia' },
+  { role: 'split', label: 'Podział 50/50', hint: 'dwa zdjęcia, dwie linijki' },
+  { role: 'cta', label: 'Zakończenie / CTA', hint: 'ostatni slajd' },
+]
 
 export const buildSlide = (tpl: TemplateDef, ctx: Omit<BuildCtx, 'fields'> & { fields: Partial<Fields> }): Slide => {
   const fields = { ...emptyFields(), ...ctx.fields }
