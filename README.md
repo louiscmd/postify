@@ -38,7 +38,7 @@ The *Układy* panel lists 16 content structures (cover, content, list, accent, 5
 ## Privacy and the API key
 
 - Without an account, photos, projects and presets stay in your browser (IndexedDB). With an account (see below) they also sync to Supabase.
-- The AI features use **your own Anthropic API key**. Paste it under ⚙ *Ustawienia* (settings). It is stored only in this browser's `localStorage`, and requests go straight from the browser to `api.anthropic.com`.
+- The AI features use **your own Anthropic API key**. Paste it under ⚙ *Ustawienia* (settings). It is stored in this browser's `localStorage` (and in your account, if you use one), and requests go straight from the browser to `api.anthropic.com`.
 - The default model is Claude Opus 5, with server-side refusal fallback enabled. Sonnet 5 and Haiku 4.5 can be picked in settings if you want lower cost.
 
 ## Accounts (Konta)
