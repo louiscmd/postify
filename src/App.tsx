@@ -5,7 +5,8 @@ import { Gallery } from './components/Gallery'
 import { Bulb, Download, Folder, Gear, Grid, Hand, ImageIcon, Layout, Palette, Redo, Sparkles, Undo } from './components/Icons'
 import { Inspector } from './components/Inspector'
 import { LayoutsPanel } from './components/LayoutsPanel'
-import { PresetsModal, ProjectsModal, SettingsModal } from './components/Modals'
+import { AccountModal, PresetsModal, ProjectsModal, SettingsModal } from './components/Modals'
+import { initAccounts } from './lib/account'
 import { SlideStrip } from './components/SlideStrip'
 import { TipsPanel } from './components/TipsPanel'
 import { exportZip } from './lib/export'
@@ -66,7 +67,7 @@ export default function App() {
   useShortcuts()
 
   useEffect(() => {
-    s.init()
+    s.init().then(initAccounts)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -130,6 +131,18 @@ export default function App() {
         </button>
         <button className="btn ghost" onClick={() => s.set({ modal: 'presets' })}>
           <Palette /> Presety
+        </button>
+        <button
+          className={`btn ghost account-btn ${s.sync}`}
+          onClick={() => s.set({ modal: 'account' })}
+          title={
+            s.account
+              ? `${s.account.email} — ${s.sync === 'error' ? `błąd synchronizacji: ${s.syncMsg}` : s.sync === 'syncing' ? 'synchronizuję…' : 'zsynchronizowano'}`
+              : 'Zaloguj się, aby zapisywać projekty i klucz API na koncie'
+          }
+        >
+          <span className="avatar">{s.account ? s.account.email[0].toUpperCase() : '?'}</span>
+          {s.account ? (s.sync === 'syncing' ? 'Sync…' : s.sync === 'error' ? 'Błąd sync' : 'Konto') : 'Zaloguj'}
         </button>
         <button className="btn ghost icon" title="Ustawienia (klucz API)" onClick={() => s.set({ modal: 'settings' })}>
           <Gear />
@@ -197,6 +210,7 @@ export default function App() {
       {s.modal === 'settings' && <SettingsModal />}
       {s.modal === 'projects' && <ProjectsModal />}
       {s.modal === 'presets' && <PresetsModal />}
+      {s.modal === 'account' && <AccountModal />}
       {s.toast && <div className="toast">{s.toast}</div>}
       {progress && (
         <div className="progress">

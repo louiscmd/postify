@@ -1,6 +1,8 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { FONTS } from '../fonts'
 import { MODELS } from '../lib/ai'
+import { auth, syncNow } from '../lib/account'
+import { authErrorPl, cloudEnabled } from '../lib/cloud'
 import { cleanApiKey, uid } from '../lib/util'
 import { SHADOW_LABELS, STYLE_LABELS } from '../presets'
 import { buildSlide, TEMPLATES } from '../presets/templates'
@@ -50,7 +52,7 @@ export function SettingsModal() {
         />
         {err && <div className="msg err" style={{ marginTop: 8, fontSize: 12.5 }}>{err}</div>}
         <div className="tiny dim" style={{ marginTop: 6 }}>
-          Klucz jest zapisywany tylko w tej przeglądarce (localStorage) i wysyłany bezpośrednio do api.anthropic.com. Utwórz go na{' '}
+          {useStore.getState().account ? 'Klucz jest zapisany na Twoim koncie (widoczny tylko dla Ciebie) i wysyłany bezpośrednio do api.anthropic.com.' : 'Klucz jest zapisywany w tej przeglądarce i wysyłany bezpośrednio do api.anthropic.com. Zaloguj się, aby zapisać go na koncie.'} Utwórz go na{' '}
           <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
             console.anthropic.com
           </a>
@@ -110,7 +112,7 @@ export function ProjectsModal() {
   return (
     <Modal title="Projekty" onClose={close}>
       <div className="row" style={{ marginBottom: 14 }}>
-        <span className="grow small muted">Projekty są zapisywane automatycznie w tej przeglądarce.</span>
+        <span className="grow small muted">{useStore.getState().account ? `Projekty zapisują się automatycznie na koncie ${useStore.getState().account!.email}.` : 'Projekty zapisują się automatycznie w tej przeglądarce. Zaloguj się, aby mieć je na każdym urządzeniu.'}</span>
         <button className="btn primary" onClick={() => st().newProject()}>
           <Plus size={15} /> Nowy projekt
         </button>
@@ -301,6 +303,149 @@ export function PresetsModal() {
           })}
         </div>
       </div>
+    </Modal>
+  )
+}
+
+// ── Account ──────────────────────────────────────────────────
+export function AccountModal() {
+  const account = useStore((s) => s.account)
+  const sync = useStore((s) => s.sync)
+  const syncMsg = useStore((s) => s.syncMsg)
+  const recovery = useStore((s) => s.recovery)
+  const projects = useStore((s) => s.projects)
+  const [mode, setMode] = useState<'in' | 'up' | 'reset'>('in')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const run = async (fn: () => Promise<string | void>) => {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const ok = await fn()
+      if (ok) setMsg({ ok: true, text: ok })
+    } catch (e) {
+      setMsg({ ok: false, text: authErrorPl((e as Error).message) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!cloudEnabled)
+    return (
+      <Modal title="Konto" onClose={close} narrow>
+        <p className="small muted" style={{ marginTop: 0 }}>
+          Konta nie są jeszcze włączone w tej instalacji Postify. Wszystko działa lokalnie — projekty i klucz API zostają w tej przeglądarce.
+        </p>
+        <p className="small muted">
+          Aby włączyć konta, właściciel strony musi podłączyć Supabase (instrukcja w README, sekcja „Konta”).
+        </p>
+      </Modal>
+    )
+
+  if (recovery)
+    return (
+      <Modal title="Ustaw nowe hasło" onClose={() => useStore.setState({ modal: null, recovery: false })} narrow>
+        <div className="field">
+          <span className="label">Nowe hasło</span>
+          <input className="input" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </div>
+        {msg && <div className={`msg ${msg.ok ? 'bot' : 'err'}`} style={{ marginBottom: 12 }}>{msg.text}</div>}
+        <button
+          className="btn primary"
+          style={{ width: '100%' }}
+          disabled={busy || password.length < 6}
+          onClick={() =>
+            run(async () => {
+              await auth.setNewPassword(password)
+              useStore.setState({ recovery: false })
+              return 'Hasło zmienione.'
+            })
+          }
+        >
+          Zapisz hasło
+        </button>
+      </Modal>
+    )
+
+  if (account)
+    return (
+      <Modal title="Konto" onClose={close} narrow>
+        <div className="card" style={{ marginBottom: 14 }}>
+          <div className="mini-label">Zalogowano jako</div>
+          <div style={{ fontWeight: 600 }}>{account.email}</div>
+          <div className="small muted" style={{ marginTop: 6 }}>
+            {sync === 'syncing' ? 'Synchronizuję…' : sync === 'error' ? `Błąd synchronizacji: ${syncMsg}` : `Zsynchronizowano · ${projects.length} projekt(ów)`}
+          </div>
+        </div>
+        <p className="small muted" style={{ marginTop: 0 }}>
+          Projekty, zdjęcia z galerii, własne presety i klucz API są zapisywane na tym koncie — zaloguj się na innym urządzeniu, a wszystko będzie na miejscu.
+        </p>
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <button className="btn" disabled={sync === 'syncing'} onClick={() => syncNow()}>
+            Synchronizuj teraz
+          </button>
+          <button className="btn danger" onClick={() => auth.signOut().then(close)}>
+            Wyloguj
+          </button>
+        </div>
+      </Modal>
+    )
+
+  return (
+    <Modal title={mode === 'up' ? 'Załóż konto' : mode === 'reset' ? 'Reset hasła' : 'Zaloguj się'} onClose={close} narrow>
+      {mode !== 'reset' && (
+        <div className="seg full" style={{ marginBottom: 14 }}>
+          <button className={mode === 'in' ? 'on red' : ''} onClick={() => setMode('in')}>
+            Logowanie
+          </button>
+          <button className={mode === 'up' ? 'on red' : ''} onClick={() => setMode('up')}>
+            Nowe konto
+          </button>
+        </div>
+      )}
+      <form
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (mode === 'in') run(() => auth.signIn(email.trim(), password).then(close))
+          else if (mode === 'up')
+            run(async () => {
+              const r = await auth.signUp(email.trim(), password)
+              return r.needsConfirm ? `Wysłaliśmy link potwierdzający na ${email.trim()}. Kliknij go, a potem zaloguj się tutaj.` : undefined
+            })
+          else
+            run(async () => {
+              await auth.resetPassword(email.trim())
+              return 'Jeśli konto istnieje, wysłaliśmy link do ustawienia nowego hasła.'
+            })
+        }}
+      >
+        <div className="field">
+          <span className="label">E-mail</span>
+          <input className="input" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        {mode !== 'reset' && (
+          <div className="field">
+            <span className="label">Hasło</span>
+            <input className="input" type="password" autoComplete={mode === 'up' ? 'new-password' : 'current-password'} required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
+        )}
+        {msg && <div className={`msg ${msg.ok ? 'bot' : 'err'}`} style={{ marginBottom: 12 }}>{msg.text}</div>}
+        <button className="btn primary" type="submit" style={{ width: '100%' }} disabled={busy}>
+          {busy && <span className="spinner" />}
+          {mode === 'in' ? 'Zaloguj' : mode === 'up' ? 'Załóż konto' : 'Wyślij link'}
+        </button>
+      </form>
+      <div className="row" style={{ justifyContent: 'space-between', marginTop: 12 }}>
+        <button className="btn ghost sm" onClick={() => setMode(mode === 'reset' ? 'in' : 'reset')}>
+          {mode === 'reset' ? '← Wróć do logowania' : 'Nie pamiętam hasła'}
+        </button>
+      </div>
+      <p className="tiny dim" style={{ marginBottom: 0 }}>
+        Po pierwszym zalogowaniu Postify zaproponuje przeniesienie projektów i zdjęć z tej przeglądarki do konta.
+      </p>
     </Modal>
   )
 }

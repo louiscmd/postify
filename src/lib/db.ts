@@ -1,8 +1,36 @@
-import { createStore, del, get, set } from 'idb-keyval'
+import { createStore, del, entries, get, set, setMany } from 'idb-keyval'
 import type { GalleryImage, Preset, Project, ProjectMeta } from '../types'
 import { uid } from './util'
 
-const store = createStore('postify', 'kv')
+// One local database per account (plus "postify" for guest use), so accounts never mix on a shared browser.
+const storeFor = (ns: string) => createStore(ns ? `postify-${ns}` : 'postify', 'kv')
+let store = storeFor('')
+
+/** Switch the local database to an account ('' = guest). */
+export const useNamespace = (ns: string) => {
+  store = storeFor(ns)
+}
+
+/** Copy everything saved in guest mode into the current (account) database. */
+export async function copyGuestData() {
+  const all = await entries(storeFor(''))
+  const byId = <T extends { id: string }>(a: T[] = [], b: T[] = []) => [...new Map([...a, ...b].map((x) => [x.id, x])).values()]
+  const out: [IDBValidKey, unknown][] = []
+  for (const [k, v] of all) {
+    if (k === 'lastProject') continue
+    // index lists are merged with what the account already has, everything else is copied as-is
+    if (k === 'projects' || k === 'images' || k === 'presets') out.push([k, byId((await get(k, store)) as { id: string }[], v as { id: string }[])])
+    else out.push([k, v])
+  }
+  await setMany(out, store)
+}
+
+export async function guestSummary() {
+  const g = storeFor('')
+  const projects = ((await get('projects', g)) as ProjectMeta[] | undefined) ?? []
+  const images = ((await get('images', g)) as unknown[] | undefined) ?? []
+  return { projects, images: images.length }
+}
 
 type ImageMeta = Omit<GalleryImage, 'url'>
 

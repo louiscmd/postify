@@ -35,9 +35,35 @@ The *Układy* panel lists 16 content structures (cover, content, list, accent, 5
 
 ## Privacy and the API key
 
-- Photos, projects and presets stay in your browser (IndexedDB). There is no backend and no account.
+- Without an account, photos, projects and presets stay in your browser (IndexedDB). With an account (see below) they also sync to Supabase.
 - The AI features use **your own Anthropic API key**. Paste it under ⚙ *Ustawienia* (settings). It is stored only in this browser's `localStorage`, and requests go straight from the browser to `api.anthropic.com`.
 - The default model is Claude Opus 5, with server-side refusal fallback enabled. Sonnet 5 and Haiku 4.5 can be picked in settings if you want lower cost.
+
+## Accounts (Konta)
+
+Accounts are optional. Without them Postify works exactly as before, storing everything in your browser. With them, each account keeps its own:
+
+- projects
+- gallery photos
+- custom presets
+- **Anthropic API key and model choice**
+
+It all syncs across devices. Postify stays local-first: it works offline, and every change is also pushed to the account in the background. The avatar button in the header shows the sync status.
+
+The first time you log in on a browser, Postify offers to **move the projects and photos made there before logging in** into your account.
+
+### One-time setup (about 5 minutes, free tier)
+
+1. Create a project at [supabase.com](https://supabase.com). Any name and region will do.
+2. In the dashboard, open **SQL Editor → New query**, paste [`supabase/schema.sql`](supabase/schema.sql) and click **Run**. This creates the tables, the private `images` bucket and the Row Level Security rules, so each user can only see their own rows and files.
+3. Under **Authentication → URL Configuration**, set **Site URL** to your deployed address (e.g. your Vercel URL). Confirmation and password-reset emails will link back there.
+4. Under **Project Settings → API**, copy the **Project URL** and the **anon public** key, then add them as environment variables:
+   - **Vercel:** Project → Settings → Environment Variables → `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` → redeploy.
+   - **GitHub Pages:** repo → Settings → Secrets and variables → Actions → **Variables** tab → same two names.
+   - **Local dev:** copy `.env.example` to `.env.local`.
+5. Open Postify, click **Zaloguj → Nowe konto**, and confirm your email.
+
+Both values are meant to be public. Data is protected by Row Level Security, not by keeping the key secret. The API key is stored in your `profiles` row, readable only by you (and by whoever administers the Supabase project).
 
 ## Development
 

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { cloud, cloudEnabled } from './lib/cloud'
 import { db, importFile } from './lib/db'
 import { debounce, uid } from './lib/util'
 import { BUILTIN_PRESETS } from './presets'
@@ -6,7 +7,7 @@ import { buildSlide, templateById } from './presets/templates'
 import type { El, GalleryImage, Preset, Project, ProjectMeta, Settings, Slide } from './types'
 
 export type LeftTab = 'ai' | 'gallery' | 'layouts'
-export type Modal = null | 'projects' | 'presets' | 'settings'
+export type Modal = null | 'projects' | 'presets' | 'settings' | 'account'
 
 interface State {
   ready: boolean
@@ -30,6 +31,10 @@ interface State {
   focusTick: number
   toast: string | null
   exporting: boolean
+  account: { id: string; email: string } | null
+  sync: 'off' | 'idle' | 'syncing' | 'error'
+  syncMsg: string
+  recovery: boolean
 
   init: () => Promise<void>
   set: (p: Partial<State>) => void
@@ -64,10 +69,16 @@ interface State {
   saveSettings: (s: Partial<Settings>) => void
 }
 
-const SETTINGS_KEY = 'postify.settings'
-const loadSettings = (): Settings => {
+// Logged-in account id ('' = guest). Settings and the local database are kept per account.
+let accountId = ''
+export const setAccountId = (id: string) => {
+  accountId = id
+}
+export const getAccountId = () => accountId
+const settingsKey = () => (accountId ? `postify.settings.${accountId}` : 'postify.settings')
+export const loadSettings = (): Settings => {
   try {
-    return { apiKey: '', model: 'claude-opus-5', ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }
+    return { apiKey: '', model: 'claude-opus-5', ...JSON.parse(localStorage.getItem(settingsKey()) || '{}') }
   } catch {
     return { apiKey: '', model: 'claude-opus-5' }
   }
@@ -91,7 +102,17 @@ const persist = debounce(async (p: Project, list: ProjectMeta[]) => {
   await db.saveProject(p)
   await db.saveProjectIndex(list)
   await db.setLastProjectId(p.id)
+  cloudPush(() => cloud.pushProject(p))
 }, 400)
+
+/** Mirror a change to the account (no-op in guest mode); failures show in the account badge. */
+export const cloudPush = (fn: () => Promise<unknown>) => {
+  if (!accountId || !cloudEnabled) return
+  useStore.setState({ sync: 'syncing' })
+  fn()
+    .then(() => useStore.setState({ sync: 'idle', syncMsg: '' }))
+    .catch((e: Error) => useStore.setState({ sync: 'error', syncMsg: e.message }))
+}
 
 const mapOf = (imgs: GalleryImage[]) => Object.fromEntries(imgs.map((i) => [i.id, i]))
 
@@ -133,8 +154,13 @@ export const useStore = create<State>((set, get) => {
     focusTick: 0,
     toast: null,
     exporting: false,
+    account: null,
+    sync: 'off',
+    syncMsg: '',
+    recovery: false,
 
     async init() {
+      get().images.forEach((i) => URL.revokeObjectURL(i.url))
       const [images, customPresets, projects, lastId] = await Promise.all([
         db.loadImages(),
         db.loadCustomPresets(),
@@ -146,7 +172,7 @@ export const useStore = create<State>((set, get) => {
       if (!project && projects[0]) project = await db.loadProject(projects[0].id)
       const p = project ?? get().project
       const list = projects.some((m) => m.id === p.id) ? projects : [meta(p), ...projects]
-      set({ ready: true, images, imageMap: mapOf(images), customPresets, projects: list, project: p, current: 0 })
+      set({ ready: true, images, imageMap: mapOf(images), customPresets, projects: list, project: p, current: 0, selEl: null, selBlock: null, past: [], future: [], settings: loadSettings() })
       if (!project) persist(p, list)
     },
 
@@ -194,6 +220,11 @@ export const useStore = create<State>((set, get) => {
       const images = [...added, ...get().images]
       set({ images, imageMap: mapOf(images) })
       await db.saveImageIndex(images)
+      const uidNow = accountId
+      for (const a of added) {
+        const { url: _u, ...m } = a
+        cloudPush(async () => cloud.pushImage(uidNow, m, (await db.getImageBlob(a.id))!))
+      }
       if (added.length) get().notify(`Dodano ${added.length} ${added.length === 1 ? 'zdjęcie' : 'zdjęć'}`)
       return added.map((a) => a.id)
     },
@@ -204,6 +235,8 @@ export const useStore = create<State>((set, get) => {
       set({ images, imageMap: mapOf(images), aiSelection: get().aiSelection.filter((x) => x !== id) })
       db.saveImageIndex(images)
       db.deleteImage(id)
+      const uidNow = accountId
+      cloudPush(() => cloud.deleteImage(uidNow, id))
       if (img) setTimeout(() => URL.revokeObjectURL(img.url), 1000)
     },
 
@@ -234,6 +267,7 @@ export const useStore = create<State>((set, get) => {
 
     async deleteProject(id) {
       await db.deleteProject(id)
+      cloudPush(() => cloud.deleteProject(id))
       const projects = get().projects.filter((m) => m.id !== id)
       set({ projects })
       await db.saveProjectIndex(projects)
@@ -339,16 +373,20 @@ export const useStore = create<State>((set, get) => {
       const customPresets = list.some((x) => x.id === p.id) ? list.map((x) => (x.id === p.id ? p : x)) : [...list, p]
       set({ customPresets })
       db.saveCustomPresets(customPresets)
+      cloudPush(() => cloud.pushPresets(customPresets))
     },
     deletePreset(id) {
       const customPresets = get().customPresets.filter((x) => x.id !== id)
       set({ customPresets })
       db.saveCustomPresets(customPresets)
+      cloudPush(() => cloud.pushPresets(customPresets))
       if (get().project.presetId === id) get().mutate((p) => (p.presetId = BUILTIN_PRESETS[0].id))
     },
     saveSettings(s) {
       const settings = { ...get().settings, ...s }
-      localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
+      localStorage.setItem(settingsKey(), JSON.stringify(settings))
+      const uidNow = accountId
+      if (s.apiKey !== undefined || s.model !== undefined) cloudPush(() => cloud.pushProfile(uidNow, settings.apiKey, settings.model))
       set({ settings })
     },
   }
