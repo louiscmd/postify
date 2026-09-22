@@ -43,14 +43,16 @@ There are 15 layout templates (*Układy*), and every one works with every preset
 
 ```bash
 npm install
-npm run dev      # http://localhost:5173/postify/
+npm run dev      # http://localhost:5173/
 npm run build    # outputs to dist/
 ```
 
 The stack is React 19, Vite, TypeScript and Zustand, plus html-to-image and JSZip for export, `@anthropic-ai/sdk` for Claude and `@fontsource/*` for the fonts. The fonts are bundled locally so that PNG export embeds them, and Polish diacritics are included.
 
-For dev-only visual QA, open `/postify/?render=<templateId>&img=<n>&zone=top|middle|bottom&tone=light|dark`. It renders one template on photo *n* from your gallery.
+For dev-only visual QA, open `/?render=<templateId>&img=<n>&zone=top|middle|bottom&tone=light|dark`. It renders one template on photo *n* from your gallery.
 
 ## Deployment
 
 `.github/workflows/deploy.yml` builds and publishes to GitHub Pages on every push to `main`. Enable it once under **Settings → Pages → Source: GitHub Actions**. The app will then be served at `https://louiscmd.github.io/postify/`.
+
+The build uses a relative base (`./`), so the same output also deploys to Vercel/Netlify at the domain root with no extra config (build command `npm run build`, output directory `dist`).

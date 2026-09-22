@@ -1,8 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// base = repo name so the build works on GitHub Pages (louiscmd.github.io/postify/)
+// Relative base: the same build works at a domain root (Vercel) and under a
+// sub-path (GitHub Pages: louiscmd.github.io/postify/). The app has no routes.
 export default defineConfig({
   plugins: [react()],
-  base: '/postify/',
+  base: './',
 })
