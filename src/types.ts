@@ -131,9 +131,12 @@ export type El = StackEl | ImageEl | DoodleEl
 
 export interface BgSlot {
   imageId: string | null
-  focusX: number // 0..100 (object-position)
+  focusX: number // legacy object-position, kept so old projects still open
   focusY: number
-  zoom: number // 1 = cover
+  zoom: number // 1 = fills the frame ("cover"), < 1 = whole photo visible, > 1 = zoomed in
+  offsetX?: number // free placement, in canvas px from centred
+  offsetY?: number
+  blur?: boolean // fill the empty edges with a blurred copy (default on)
 }
 
 export interface Overlay {

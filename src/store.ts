@@ -214,7 +214,7 @@ export const useStore = create<State>((set, get) => {
           await db.putImageBlob(meta.id, blob)
           added.push({ ...meta, url: URL.createObjectURL(blob) })
         } catch {
-          get().notify(`Nie udało się wczytać: ${f.name}`)
+          get().notify(/hei[cf]/i.test(f.type + f.name) ? `${f.name}: przeglądarka nie czyta HEIC — zapisz zdjęcie jako JPG` : `Nie udało się wczytać: ${f.name}`)
         }
       }
       const images = [...added, ...get().images]
@@ -363,8 +363,8 @@ export const useStore = create<State>((set, get) => {
     setSlotImage(slideIdx, slotIdx, imageId) {
       get().mutate((p) => {
         const s = p.slides[slideIdx]
-        while (s.slots.length <= slotIdx) s.slots.push({ imageId: null, focusX: 50, focusY: 50, zoom: 1 })
-        s.slots[slotIdx] = { imageId, focusX: 50, focusY: 50, zoom: 1 }
+        while (s.slots.length <= slotIdx) s.slots.push({ imageId: null, focusX: 50, focusY: 50, zoom: 1, offsetX: 0, offsetY: 0 })
+        s.slots[slotIdx] = { imageId, focusX: 50, focusY: 50, zoom: 1, offsetX: 0, offsetY: 0, blur: s.slots[slotIdx]?.blur }
       })
     },
 

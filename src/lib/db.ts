@@ -87,9 +87,9 @@ export const db = {
   },
 }
 
-const MAX_EDGE = 2160 // 2× the export width — room to zoom without blur
+const MAX_EDGE = 4096 // ~4× the export width — big enough to zoom deep into a large photo without blur
 
-/** Downscale on import so the gallery stays light; keep PNG for screenshots/transparency. */
+/** Import any size/shape; only very large photos are downscaled. PNG keeps transparency. */
 export async function importFile(file: File): Promise<{ meta: Omit<GalleryImage, 'url'>; blob: Blob }> {
   const bmp = await createImageBitmap(file)
   const scale = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height))

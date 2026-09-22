@@ -8,7 +8,7 @@ export function useSlideAnalysis(slide: Slide | undefined, enabled = true) {
   const imageMap = useStore((s) => s.imageMap)
   const [res, setRes] = useState<(Analysis | null)[]>([])
   const key = slide
-    ? slide.layout + '|' + slide.slots.map((s) => `${s.imageId}:${s.focusX}:${s.focusY}:${s.zoom}`).join(',')
+    ? slide.layout + '|' + slide.slots.map((s) => `${s.imageId}:${s.focusX}:${s.focusY}:${s.zoom}:${s.offsetX}:${s.offsetY}:${s.blur}`).join(',')
     : ''
   useEffect(() => {
     if (!slide || !enabled) return

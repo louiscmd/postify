@@ -4,6 +4,7 @@ import { RichText } from '../lib/markup'
 import { SHADOWS } from '../presets'
 import type { BgSlot, Block, El, GalleryImage, Preset, Slide, TextStyle } from '../types'
 import { H, W } from '../types'
+import { slotRect } from '../lib/slot'
 import { Doodle } from './Doodle'
 
 export const resolveStyle = (preset: Preset, b: Block): TextStyle => ({ ...preset.styles[b.styleKey], ...b.overrides })
@@ -72,24 +73,29 @@ const BlockView = ({ b, preset }: { b: Block; preset: Preset }) => {
   )
 }
 
-const SlotView = ({ s, img, top, height, showHint }: { s: BgSlot; img?: GalleryImage; top: number; height: number; showHint: boolean }) => (
+const SlotView = ({ s, img, top, height, showHint }: { s: BgSlot; img?: GalleryImage; top: number; height: number; showHint: boolean }) => {
+  const r = img ? slotRect(s, img, W, height) : null
+  return (
   <div style={{ position: 'absolute', left: 0, top, width: W, height, overflow: 'hidden' }}>
-    {img ? (
-      <img
-        src={img.url}
-        alt=""
-        draggable={false}
-        style={{
-          position: 'absolute',
-          inset: 0,
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          objectPosition: `${s.focusX}% ${s.focusY}%`,
-          transform: `scale(${s.zoom})`,
-          transformOrigin: `${s.focusX}% ${s.focusY}%`,
-        }}
-      />
+    {img && r ? (
+      <>
+        {/* photo smaller than the frame: fill the edges with a blurred copy instead of a flat band */}
+        {!r.covers && s.blur !== false && (
+          <img
+            src={img.url}
+            alt=""
+            draggable={false}
+            aria-hidden
+            style={{ position: 'absolute', left: -60, top: -60, width: W + 120, height: height + 120, objectFit: 'cover', filter: 'blur(42px) brightness(0.55) saturate(1.1)' }}
+          />
+        )}
+        <img
+          src={img.url}
+          alt=""
+          draggable={false}
+          style={{ position: 'absolute', left: r.left, top: r.top, width: r.w, height: r.h, maxWidth: 'none', display: 'block' }}
+        />
+      </>
     ) : (
       <div
         style={{
@@ -110,7 +116,8 @@ const SlotView = ({ s, img, top, height, showHint }: { s: BgSlot; img?: GalleryI
       </div>
     )}
   </div>
-)
+  )
+}
 
 export const ElementView = ({ el, preset, images }: { el: El; preset: Preset; images: Record<string, GalleryImage> }) => {
   if (el.type === 'stack') {

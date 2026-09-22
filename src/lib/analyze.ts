@@ -1,5 +1,6 @@
 import type { BgSlot, GalleryImage, Tone, Zone } from '../types'
 import { W } from '../types'
+import { slotRect } from './slot'
 import { clamp, loadImg } from './util'
 
 export interface ZoneStat {
@@ -28,7 +29,7 @@ const cache = new Map<string, Analysis>()
  * then measures brightness and edge density on a coarse grid.
  */
 export async function analyzeSlot(img: GalleryImage, s: BgSlot, slotW: number, slotH: number): Promise<Analysis> {
-  const key = `${img.id}|${s.focusX}|${s.focusY}|${s.zoom}|${slotW}|${slotH}`
+  const key = `${img.id}|${s.focusX}|${s.focusY}|${s.zoom}|${s.offsetX ?? 'a'}|${s.offsetY ?? 'a'}|${s.blur === false ? 'n' : 'b'}|${slotW}|${slotH}`
   const hit = cache.get(key)
   if (hit) return hit
 
@@ -39,17 +40,21 @@ export async function analyzeSlot(img: GalleryImage, s: BgSlot, slotW: number, s
   cv.height = ch
   const ctx = cv.getContext('2d', { willReadFrequently: true })!
   const el = await loadImg(img.url)
-  const sc = Math.max(cw / el.naturalWidth, ch / el.naturalHeight)
-  const dw = el.naturalWidth * sc
-  const dh = el.naturalHeight * sc
-  const fx = s.focusX / 100
-  const fy = s.focusY / 100
-  const ox = fx * cw
-  const oy = fy * ch
-  ctx.translate(ox, oy)
-  ctx.scale(s.zoom, s.zoom)
-  ctx.translate(-ox, -oy)
-  ctx.drawImage(el, (cw - dw) * fx, (ch - dh) * fy, dw, dh)
+  // exactly the placement the slide renders: free zoom/offset, blurred fill behind the edges
+  const k = cw / slotW
+  const r = slotRect(s, img, slotW, slotH)
+  if (!r.covers) {
+    if (s.blur === false) {
+      ctx.fillStyle = '#1d1718'
+      ctx.fillRect(0, 0, cw, ch)
+    } else {
+      const bs = Math.max(cw / el.naturalWidth, ch / el.naturalHeight)
+      ctx.filter = 'blur(3px) brightness(0.55)'
+      ctx.drawImage(el, (cw - el.naturalWidth * bs) / 2, (ch - el.naturalHeight * bs) / 2, el.naturalWidth * bs, el.naturalHeight * bs)
+      ctx.filter = 'none'
+    }
+  }
+  ctx.drawImage(el, r.left * k, r.top * k, r.w * k, r.h * k)
   const px = ctx.getImageData(0, 0, cw, ch).data
 
   const L = new Float32Array(cw * ch)

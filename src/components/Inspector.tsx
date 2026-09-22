@@ -5,7 +5,8 @@ import { SHADOW_LABELS, STYLE_LABELS } from '../presets'
 import { makeChips, makeDoodle, makeInset, makeSlot, makeStack, makeTextBlock } from '../presets/templates'
 import { usePreset, useSlide, useStore } from '../store'
 import type { Block, DoodleEl, ImageEl, StackEl, StyleKey, TextStyle, Zone } from '../types'
-import { W } from '../types'
+import { H, W } from '../types'
+import { containZoom, MAX_ZOOM, MIN_ZOOM, pixelZoom } from '../lib/slot'
 import { IMAGE_MIME } from './Canvas'
 import { DOODLES, Doodle } from './Doodle'
 import { Copy, Down, ImageIcon, Pill, Plus, Reset, Split, Square, Trash, Up } from './Icons'
@@ -470,6 +471,7 @@ function SlideInspector() {
     })
 
   const slots = slide.layout === 'split' ? slide.slots.slice(0, 2) : slide.slots.slice(0, 1)
+  const slotH = slide.layout === 'split' ? H / 2 : H
 
   return (
     <>
@@ -549,10 +551,35 @@ function SlideInspector() {
               </div>
               {img && (
                 <div style={{ marginTop: 10 }}>
-                  <Slider label="Kadr poziomo" min={0} max={100} value={s.focusX} onChange={(v) => set((x) => (x.focusX = v), `slot${i}-fx`)} fmt={(v) => `${v}%`} />
-                  <Slider label="Kadr pionowo" min={0} max={100} value={s.focusY} onChange={(v) => set((x) => (x.focusY = v), `slot${i}-fy`)} fmt={(v) => `${v}%`} />
-                  <Slider label="Powiększenie" min={1} max={2.5} step={0.01} value={s.zoom} onChange={(v) => set((x) => (x.zoom = v), `slot${i}-z`)} fmt={(v) => `${Math.round(v * 100)}%`} />
-                  <div className="tiny dim">Wskazówka: przeciągnij puste miejsce na slajdzie, aby przesunąć kadr.</div>
+                  <Slider
+                    label="Powiększenie"
+                    min={MIN_ZOOM}
+                    max={MAX_ZOOM}
+                    step={0.01}
+                    value={s.zoom}
+                    onChange={(v) => set((x) => (x.zoom = v), `slot${i}-z`)}
+                    fmt={(v) => `${Math.round(v * 100)}%`}
+                  />
+                  <div className="grid2" style={{ marginBottom: 8 }}>
+                    <button className="btn sm" title="Zdjęcie wypełnia cały kadr (część zostaje ucięta)" onClick={() => set((x) => Object.assign(x, { zoom: 1, offsetX: 0, offsetY: 0 }))}>
+                      Wypełnij kadr
+                    </button>
+                    <button className="btn sm" title="Całe zdjęcie mieści się w kadrze — brzegi wypełnia rozmycie" onClick={() => set((x) => Object.assign(x, { zoom: Math.round(containZoom(img, W, slotH) * 1000) / 1000, offsetX: 0, offsetY: 0 }))}>
+                      Zmieść całość
+                    </button>
+                    <button className="btn sm" title="Skala 1:1 — piksele zdjęcia = piksele eksportu" onClick={() => set((x) => Object.assign(x, { zoom: Math.round(pixelZoom(img, W, slotH) * 1000) / 1000 }))}>
+                      Skala 1:1
+                    </button>
+                    <button className="btn sm" title="Wyśrodkuj zdjęcie w kadrze" onClick={() => set((x) => Object.assign(x, { offsetX: 0, offsetY: 0 }))}>
+                      Wyśrodkuj
+                    </button>
+                  </div>
+                  <label className="row small" style={{ marginBottom: 6 }}>
+                    <input type="checkbox" checked={s.blur !== false} onChange={(e) => set((x) => (x.blur = e.target.checked))} /> rozmyte tło przy pomniejszeniu
+                  </label>
+                  <div className="tiny dim">
+                    {img.w}×{img.h} px · przeciągnij zdjęcie na slajdzie, aby je przesunąć; kółko myszy = powiększenie.
+                  </div>
                 </div>
               )}
             </div>

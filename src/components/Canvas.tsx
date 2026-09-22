@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type DragEvent, type PointerEvent as RPointerEvent } from 'react'
 import { useSlideAnalysis } from '../lib/useAnalysis'
+import { clampOffset, coverScale, MAX_ZOOM, MIN_ZOOM, slotRect } from '../lib/slot'
 import { clamp, uid } from '../lib/util'
 import { useSlide, usePreset, useStore } from '../store'
 import { H, W, type El } from '../types'
@@ -11,7 +12,7 @@ type Rect = { x: number; y: number; w: number; h: number }
 type Drag =
   | { mode: 'move'; id: string; sx: number; sy: number; ox: number; oy: number; box: Rect; key: string; moved: boolean }
   | { mode: 'resize'; id: string; handle: 'e' | 'w' | 'se'; sx: number; sy: number; o: { x: number; w: number; h: number }; key: string }
-  | { mode: 'pan'; slot: number; sx: number; sy: number; fx: number; fy: number; ovx: number; ovy: number; key: string }
+  | { mode: 'pan'; slot: number; sx: number; sy: number; ox: number; oy: number; iw: number; ih: number; sh: number; key: string }
 
 const SNAP = 10
 
@@ -97,8 +98,8 @@ export function Canvas() {
         const img = s?.imageId ? images[s.imageId] : undefined
         if (img) {
           const sh = slide.layout === 'split' ? H / 2 : H
-          const k = Math.max(W / img.w, sh / img.h) * s.zoom
-          drag.current = { mode: 'pan', slot: slotIdx, sx: e.clientX, sy: e.clientY, fx: s.focusX, fy: s.focusY, ovx: img.w * k - W, ovy: img.h * k - sh, key }
+          const r = slotRect(s, img, W, sh)
+          drag.current = { mode: 'pan', slot: slotIdx, sx: e.clientX, sy: e.clientY, ox: r.offsetX, oy: r.offsetY, iw: img.w, ih: img.h, sh, key }
         }
       }
     }
@@ -166,12 +167,37 @@ export function Canvas() {
         }
       }, d.key)
     } else if (d.mode === 'pan') {
+      // free placement: the photo slides behind the fixed frame, in any direction
       store().updateSlide((s) => {
         const sl = s.slots[d.slot]
-        if (d.ovx > 1) sl.focusX = Math.round(clamp(d.fx - (dx / d.ovx) * 100, 0, 100))
-        if (d.ovy > 1) sl.focusY = Math.round(clamp(d.fy - (dy / d.ovy) * 100, 0, 100))
+        const r = slotRect({ ...sl, offsetX: d.ox, offsetY: d.oy }, { w: d.iw, h: d.ih }, W, d.sh)
+        sl.offsetX = Math.round(clampOffset(d.ox + dx, r.w, W))
+        sl.offsetY = Math.round(clampOffset(d.oy + dy, r.h, d.sh))
       }, d.key)
     }
+  }
+
+  /** Wheel over the slide zooms the photo behind the frame, keeping the point under the cursor still. */
+  const onWheel = (e: React.WheelEvent) => {
+    const p = toSlide(e)
+    const slotIdx = slide.layout === 'split' && p.y > H / 2 ? 1 : 0
+    const s = slide.slots[slotIdx]
+    const img = s?.imageId ? images[s.imageId] : undefined
+    if (!img) return
+    const sh = slide.layout === 'split' ? H / 2 : H
+    const py = p.y - slotIdx * sh
+    const r = slotRect(s, img, W, sh)
+    const next = clamp(r.w / (img.w * coverScale(img, W, sh)) * Math.pow(0.9988, e.deltaY), MIN_ZOOM, MAX_ZOOM)
+    const nw = img.w * coverScale(img, W, sh) * next
+    const nh = img.h * coverScale(img, W, sh) * next
+    const u = (p.x - r.left) / r.w
+    const v = (py - r.top) / r.h
+    store().updateSlide((sl) => {
+      const slot = sl.slots[slotIdx]
+      slot.zoom = Math.round(next * 1000) / 1000
+      slot.offsetX = Math.round(clampOffset(p.x - u * nw - (W - nw) / 2, nw, W))
+      slot.offsetY = Math.round(clampOffset(py - v * nh - (sh - nh) / 2, nh, sh))
+    }, `wheel-${slide.id}-${slotIdx}`)
   }
 
   const onPointerUp = () => {
@@ -223,6 +249,7 @@ export function Canvas() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerLeave={() => setHoverRect(null)}
+        onWheel={onWheel}
         onDoubleClick={onDoubleClick}
         onDragOver={onDragOver}
         onDragLeave={() => setDropOver(false)}
