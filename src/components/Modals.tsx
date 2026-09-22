@@ -2,7 +2,7 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { FONTS } from '../fonts'
 import { MODELS } from '../lib/ai'
 import { auth, syncNow } from '../lib/account'
-import { authErrorPl, cloudEnabled } from '../lib/cloud'
+import { authErrorPl, cloudConfigError, cloudEnabled } from '../lib/cloud'
 import { cleanApiKey, uid } from '../lib/util'
 import { SHADOW_LABELS, STYLE_LABELS } from '../presets'
 import { buildSlide, TEMPLATES } from '../presets/templates'
@@ -340,7 +340,7 @@ export function AccountModal() {
           Konta nie są jeszcze włączone w tej instalacji Postify. Wszystko działa lokalnie — projekty i klucz API zostają w tej przeglądarce.
         </p>
         <p className="small muted">
-          Aby włączyć konta, właściciel strony musi podłączyć Supabase (instrukcja w README, sekcja „Konta”).
+          {cloudConfigError ? `Konfiguracja Supabase jest nieprawidłowa: ${cloudConfigError} Sprawdź zmienne VITE_SUPABASE_URL i VITE_SUPABASE_ANON_KEY.` : 'Aby włączyć konta, właściciel strony musi podłączyć Supabase (instrukcja w README, sekcja „Konta”).'}
         </p>
       </Modal>
     )

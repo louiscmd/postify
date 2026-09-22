@@ -7,11 +7,31 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import type { GalleryImage, Preset, Project } from '../types'
 
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
-const anon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+/** Accepts the full project URL or just the project ref id, with or without https:// and trailing slash. */
+export const normalizeUrl = (raw?: string) => {
+  const v = (raw ?? '').trim().replace(/^["']|["']$/g, '').replace(/\/+$/, '')
+  if (!v) return ''
+  if (/^https?:\/\//i.test(v)) return v
+  if (/^[a-z0-9-]+$/i.test(v)) return `https://${v}.supabase.co` // project ref pasted instead of the URL
+  return `https://${v}`
+}
 
-export const supabase: SupabaseClient | null = url && anon ? createClient(url, anon) : null
-export const cloudEnabled = !!supabase
+const url = normalizeUrl(import.meta.env.VITE_SUPABASE_URL as string | undefined)
+const anon = ((import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) ?? '').trim().replace(/^["']|["']$/g, '')
+
+let client: SupabaseClient | null = null
+let configError = ''
+try {
+  if (url && anon) client = createClient(url, anon)
+} catch (e) {
+  // a bad env value must never blank the whole app — accounts just stay off
+  configError = (e as Error).message
+  console.error('Supabase config:', configError)
+}
+
+export const supabase = client
+export const cloudEnabled = !!client
+export const cloudConfigError = configError
 
 const sb = () => {
   if (!supabase) throw new Error('Konta nie są skonfigurowane')
