@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { FONTS } from '../fonts'
 import { MODELS } from '../lib/ai'
-import { uid } from '../lib/util'
+import { cleanApiKey, uid } from '../lib/util'
 import { SHADOW_LABELS, STYLE_LABELS } from '../presets'
 import { buildSlide, TEMPLATES } from '../presets/templates'
 import { allPresets, useStore } from '../store'
@@ -32,11 +32,23 @@ export function SettingsModal() {
   const settings = useStore((s) => s.settings)
   const [key, setKey] = useState(settings.apiKey)
   const [model, setModel] = useState(settings.model)
+  const [err, setErr] = useState('')
   return (
     <Modal title="Ustawienia" onClose={close} narrow>
       <div className="field">
         <span className="label">Klucz API Anthropic</span>
-        <input className="input" type="password" placeholder="sk-ant-..." value={key} onChange={(e) => setKey(e.target.value)} autoComplete="off" />
+        <input
+          className="input"
+          type="password"
+          placeholder="sk-ant-..."
+          value={key}
+          onChange={(e) => {
+            setKey(e.target.value)
+            setErr('')
+          }}
+          autoComplete="off"
+        />
+        {err && <div className="msg err" style={{ marginTop: 8, fontSize: 12.5 }}>{err}</div>}
         <div className="tiny dim" style={{ marginTop: 6 }}>
           Klucz jest zapisywany tylko w tej przeglądarce (localStorage) i wysyłany bezpośrednio do api.anthropic.com. Utwórz go na{' '}
           <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>
@@ -73,8 +85,13 @@ export function SettingsModal() {
         <button
           className="btn primary"
           onClick={() => {
-            useStore.getState().saveSettings({ apiKey: key.trim(), model })
-            useStore.getState().notify('Zapisano ustawienia')
+            const clean = cleanApiKey(key)
+            if (clean && !clean.startsWith('sk-ant-')) {
+              setErr('To nie wygląda na klucz Anthropic — powinien zaczynać się od „sk-ant-”. Skopiuj go ponownie z console.anthropic.com.')
+              return
+            }
+            useStore.getState().saveSettings({ apiKey: clean, model })
+            useStore.getState().notify(clean !== key.trim() ? 'Zapisano — usunięto z klucza niewidoczne/niedozwolone znaki' : 'Zapisano ustawienia')
             close()
           }}
         >

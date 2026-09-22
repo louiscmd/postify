@@ -1,5 +1,12 @@
 export const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-3)
 
+/**
+ * API keys go into an HTTP header, which only accepts plain ASCII. Copying from web pages or chat apps
+ * often drags in invisible characters (zero-width spaces, non-breaking spaces, curly quotes, "…").
+ * Keep only printable ASCII.
+ */
+export const cleanApiKey = (s: string) => s.replace(/[^\x21-\x7E]/g, '')
+
 export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v))
 
 export const debounce = <A extends unknown[]>(fn: (...a: A) => void, ms: number) => {

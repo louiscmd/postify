@@ -4,7 +4,7 @@ import { STYLE_LABELS } from '../presets'
 import { FIELD_KEYS, type Fields } from '../presets/templates'
 import type { GalleryImage, Preset, Role, Zone } from '../types'
 import { describe, type Analysis } from './analyze'
-import { loadImg } from './util'
+import { cleanApiKey, loadImg } from './util'
 
 export const MODELS = [
   { id: 'claude-opus-5', label: 'Claude Opus 5 — najlepsza jakość (zalecany)' },
@@ -24,7 +24,8 @@ export interface AiCarousel {
   slides: AiSlide[]
 }
 
-const client = (apiKey: string) => new Anthropic({ apiKey, dangerouslyAllowBrowser: true, maxRetries: 2 })
+// cleaned here too, so keys saved before the Settings fix still work
+const client = (apiKey: string) => new Anthropic({ apiKey: cleanApiKey(apiKey), dangerouslyAllowBrowser: true, maxRetries: 2 })
 
 /** Opus 5 gets server-side refusal fallbacks; other models run without. */
 const fallbackParams = (model: string) =>
@@ -188,6 +189,8 @@ export async function critiqueSlide(opts: { apiKey: string; model: string; prese
 }
 
 export const aiErrorMessage = (e: unknown) => {
+  if (e instanceof Error && /ISO-8859-1|non ISO|Headers/i.test(e.message))
+    return 'Klucz API zawiera niedozwolone znaki (np. niewidoczną spację lub cudzysłów z kopiowania). Wklej go ponownie w Ustawieniach.'
   if (e instanceof Anthropic.AuthenticationError) return 'Nieprawidłowy klucz API. Sprawdź go w Ustawieniach.'
   if (e instanceof Anthropic.RateLimitError) return 'Przekroczono limit zapytań. Odczekaj chwilę i spróbuj ponownie.'
   if (e instanceof Anthropic.BadRequestError) return `Błędne zapytanie: ${e.message}`
