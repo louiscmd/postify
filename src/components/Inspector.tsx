@@ -10,6 +10,7 @@ import { containZoom, MAX_ZOOM, MIN_ZOOM, pixelZoom } from '../lib/slot'
 import { IMAGE_MIME } from './Canvas'
 import { DOODLES, Doodle } from './Doodle'
 import { Copy, Down, ImageIcon, Pill, Plus, Reset, Split, Square, Trash, Up } from './Icons'
+import { Fold } from './Fold'
 import { resolveStyle } from './SlideView'
 
 // ── small controls ───────────────────────────────────────────
@@ -30,14 +31,10 @@ const Slider = ({ label, value, onChange, min, max, step = 1, fmt }: { label: st
   </label>
 )
 
-const Section = ({ title, children, right }: { title: string; children: ReactNode; right?: ReactNode }) => (
-  <div className="section">
-    <div className="section-title">
-      <span>{title}</span>
-      {right}
-    </div>
+const Section = ({ title, children, right, openOnMobile }: { title: string; children: ReactNode; right?: ReactNode; openOnMobile?: boolean }) => (
+  <Fold title={title} right={right} openOnMobile={openOnMobile}>
     {children}
-  </div>
+  </Fold>
 )
 
 const ALIGN_OPTS: [TextStyle['align'], string][] = [['left', 'Lewo'], ['center', 'Środek'], ['right', 'Prawo'], ['justify', 'Justuj']]
@@ -350,7 +347,7 @@ function StackInspector({ el }: { el: StackEl }) {
           <span className="code">lewo || prawo</span> rozbija linijkę na dwa brzegi (np. wokół głowy)
         </div>
       </div>
-      <Section title="Pozycja">
+      <Section title="Pozycja i rozmiar">
         <Transform el={el} />
       </Section>
     </>
@@ -475,7 +472,7 @@ function SlideInspector() {
 
   return (
     <>
-      <Section title="Dodaj do slajdu">
+      <Section title="Dodaj do slajdu" openOnMobile>
         <span className="mini-label">Tekst w stylu „{preset.name}” — trafi w najspokojniejsze miejsce zdjęcia</span>
         {ADD_GROUPS.map((g) => (
           <div key={g.label} style={{ marginBottom: 8 }}>

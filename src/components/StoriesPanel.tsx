@@ -1,5 +1,6 @@
 import { STORY_TYPES, storyTypeById } from '../presets/stories'
 import { useStore } from '../store'
+import { Fold, useNarrow } from './Fold'
 import { Plus, Sparkles } from './Icons'
 
 /** The weekly story system: seven types, each with its cadence, purpose and technique. */
@@ -9,6 +10,7 @@ export function StoriesPanel() {
   const active = project.format === 'story' ? storyTypeById(project.storyType) : undefined
 
   const perWeek = STORY_TYPES.reduce((n, t) => n + t.perWeek[1], 0)
+  const narrow = useNarrow()
 
   return (
     <div>
@@ -39,15 +41,18 @@ export function StoriesPanel() {
             <b className="grow">{t.name}</b>
             <span className="cadence">{t.cadence}</span>
           </div>
-          <div className="small muted" style={{ marginTop: 4 }}>
+          <div className="small muted" style={{ marginTop: 4, display: narrow ? 'none' : 'block' }}>
             {t.purpose}
           </div>
-          <div className="tiny dim" style={{ marginTop: 6 }}>
-            <b>Technika:</b> {t.technique}
-          </div>
-          <div className="tiny dim" style={{ marginTop: 6 }}>
-            {t.frames.length} klatek: {t.frames.map((f) => f.note.split('—')[0].trim()).join(' → ')}
-          </div>
+          <details className="details" style={{ marginTop: 4 }}>
+            <summary>Technika i klatki ({t.frames.length})</summary>
+            <div className="tiny dim">
+              <b>Technika:</b> {t.technique}
+            </div>
+            <div className="tiny dim" style={{ marginTop: 6 }}>
+              {t.frames.map((f) => f.note.split('—')[0].trim()).join(' → ')}
+            </div>
+          </details>
           <div className="row" style={{ marginTop: 8 }}>
             <button className="btn sm grow" onClick={() => st().newStory(t.id)}>
               <Plus size={13} /> Nowa sekwencja

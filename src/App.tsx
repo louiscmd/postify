@@ -80,7 +80,9 @@ export default function App() {
   const mobile = useIsMobile()
   const [rightTab, setRightTab] = useState<'edit' | 'tips'>('edit')
   const [sheet, setSheet] = useState<Sheet>(null)
+  const [sheetBig, setSheetBig] = useState(false)
   const [menu, setMenu] = useState(false)
+  const [tools, setTools] = useState(false)
   const [progress, setProgress] = useState<string | null>(null)
   useShortcuts()
 
@@ -120,6 +122,27 @@ export default function App() {
   const panelFor = (k: Sheet) =>
     k === 'ai' ? <AIPanel /> : k === 'layouts' ? <LayoutsPanel /> : k === 'stories' ? <StoriesPanel /> : k === 'gallery' ? <Gallery /> : k === 'tips' ? <TipsPanel /> : <Inspector />
 
+  const extraTools = (
+    <>
+      <button className="btn sm" onClick={() => rerollSlides(s.project.slides.map((_, i) => i))} title="Nowy losowy układ wszystkich slajdów">
+        🎲 Wszystkie
+      </button>
+      <button className={`btn sm ${s.showTips ? 'active' : ''}`} onClick={() => s.set({ showTips: !s.showTips })} title="Gdzie tło jest spokojne, a gdzie ruchliwe">
+        <Bulb size={14} /> Strefy
+      </button>
+      <button className={`btn sm ${s.showGuides ? 'active' : ''}`} onClick={() => s.set({ showGuides: !s.showGuides })} title="Marginesy bezpieczne i kadr profilu">
+        <Grid size={14} /> Linie
+      </button>
+      {/* the per-thumbnail buttons are hidden on a phone, so slide actions live here */}
+      <button className="btn sm" title="Duplikuj" onClick={() => s.duplicateSlide(s.current)}>
+        <Copy size={14} /> Duplikuj
+      </button>
+      <button className="btn sm danger" title="Usuń" onClick={() => s.deleteSlide(s.current)}>
+        <Trash size={14} /> Usuń
+      </button>
+    </>
+  )
+
   const toolbar = (
     <div className="canvas-toolbar">
       <span className="small muted">
@@ -127,28 +150,15 @@ export default function App() {
         <span className="hide-sm"> · {story ? '1080 × 1920 (9:16)' : '1080 × 1350 (4:5)'}</span>
       </span>
       <div className="grow" style={{ flex: 1 }} />
-      <button className="btn sm" onClick={() => rerollSlides([s.current])} title="Nowy losowy układ tej klatki — tekst i zdjęcia zostają (Ctrl+Z cofa)">
+      <button className="btn sm" onClick={() => rerollSlides([s.current])} title="Nowy losowy układ tej klatki (Ctrl+Z cofa)">
         🎲 <span className="hide-sm">Losuj układ</span>
       </button>
-      <button className="btn sm hide-sm" onClick={() => rerollSlides(s.project.slides.map((_, i) => i))} title="Nowy losowy układ wszystkich slajdów">
-        Losuj wszystkie
-      </button>
-      <button className={`btn sm ${s.showTips ? 'active' : ''}`} onClick={() => s.set({ showTips: !s.showTips })} title="Pokaż, gdzie tło jest spokojne, a gdzie ruchliwe">
-        <Bulb size={14} /> <span className="hide-sm">Strefy tekstu</span>
-      </button>
-      <button className={`btn sm ${s.showGuides ? 'active' : ''}`} onClick={() => s.set({ showGuides: !s.showGuides })} title="Marginesy bezpieczne i kadr profilu">
-        <Grid size={14} /> <span className="hide-sm">Linie pomocnicze</span>
-      </button>
-      {mobile && (
-        <>
-          {/* the per-thumbnail buttons are hidden on a phone, so slide actions live here */}
-          <button className="btn sm" title="Duplikuj" onClick={() => s.duplicateSlide(s.current)}>
-            <Copy size={14} />
-          </button>
-          <button className="btn sm danger" title="Usuń" onClick={() => s.deleteSlide(s.current)}>
-            <Trash size={14} />
-          </button>
-        </>
+      {mobile ? (
+        <button className={`btn sm ${tools ? 'active' : ''}`} onClick={() => setTools((v) => !v)} title="Więcej narzędzi">
+          ⋯
+        </button>
+      ) : (
+        extraTools
       )}
     </div>
   )
@@ -190,47 +200,53 @@ export default function App() {
         <button className="btn ghost icon" title="Cofnij (Ctrl+Z)" disabled={!s.past.length} onClick={s.undo}>
           <Undo />
         </button>
-        <button className="btn ghost icon hide-sm" title="Ponów (Ctrl+Y)" disabled={!s.future.length} onClick={s.redo}>
-          <Redo />
-        </button>
         {!mobile && (
           <>
+            <button className="btn ghost icon" title="Ponów (Ctrl+Y)" disabled={!s.future.length} onClick={s.redo}>
+              <Redo />
+            </button>
             <button className="btn ghost" onClick={() => s.set({ modal: 'projects' })}>
               <Folder /> Projekty
             </button>
             <button className="btn ghost" onClick={() => s.set({ modal: 'presets' })}>
               <Palette /> Presety
             </button>
+            <button
+              className={`btn ghost account-btn ${s.sync}`}
+              onClick={() => s.set({ modal: 'account' })}
+              title={
+                s.account
+                  ? `${s.account.email} — ${s.sync === 'error' ? `błąd synchronizacji: ${s.syncMsg}` : s.sync === 'syncing' ? 'synchronizuję…' : 'zsynchronizowano'}`
+                  : 'Zaloguj się, aby zapisywać projekty i klucz API na koncie'
+              }
+            >
+              <span className="avatar">{s.account ? s.account.email[0].toUpperCase() : '?'}</span>
+              {s.account ? (s.sync === 'syncing' ? 'Sync…' : s.sync === 'error' ? 'Błąd sync' : 'Konto') : 'Zaloguj'}
+            </button>
+            <button className="btn ghost icon" title="Ustawienia (klucz API)" onClick={() => s.set({ modal: 'settings' })}>
+              <Gear />
+            </button>
           </>
         )}
-        <button
-          className={`btn ghost account-btn ${s.sync}`}
-          onClick={() => s.set({ modal: 'account' })}
-          title={
-            s.account
-              ? `${s.account.email} — ${s.sync === 'error' ? `błąd synchronizacji: ${s.syncMsg}` : s.sync === 'syncing' ? 'synchronizuję…' : 'zsynchronizowano'}`
-              : 'Zaloguj się, aby zapisywać projekty i klucz API na koncie'
-          }
-        >
-          <span className="avatar">{s.account ? s.account.email[0].toUpperCase() : '?'}</span>
-          <span className="hide-sm">{s.account ? (s.sync === 'syncing' ? 'Sync…' : s.sync === 'error' ? 'Błąd sync' : 'Konto') : 'Zaloguj'}</span>
-        </button>
-        {mobile ? (
-          <button className="btn ghost icon" onClick={() => setMenu((v) => !v)} title="Więcej">
+        {mobile && (
+          <button className={`btn ghost icon account-btn ${s.sync}`} onClick={() => setMenu((v) => !v)} title="Menu">
             ⋯
           </button>
-        ) : (
-          <button className="btn ghost icon" title="Ustawienia (klucz API)" onClick={() => s.set({ modal: 'settings' })}>
-            <Gear />
-          </button>
         )}
-        <button className="btn primary" onClick={doExport} disabled={!!progress}>
+        <button className="btn primary" onClick={doExport} disabled={!!progress} title="Eksport PNG (ZIP)">
           <Download /> <span className="hide-sm">Eksport ZIP</span>
         </button>
       </header>
 
       {mobile && menu && (
         <div className="menu-sheet" onClick={() => setMenu(false)}>
+          <button className={`btn ghost account-btn ${s.sync}`} onClick={() => s.set({ modal: 'account' })}>
+            <span className="avatar">{s.account ? s.account.email[0].toUpperCase() : '?'}</span>
+            {s.account ? (s.sync === 'syncing' ? 'Synchronizuję…' : s.sync === 'error' ? 'Błąd synchronizacji' : s.account.email) : 'Zaloguj się'}
+          </button>
+          <button className="btn ghost" disabled={!s.future.length} onClick={s.redo}>
+            <Redo /> Ponów
+          </button>
           <button className="btn ghost" onClick={() => s.set({ modal: 'projects' })}>
             <Folder /> Projekty
           </button>
@@ -257,21 +273,30 @@ export default function App() {
         <div className="body mobile">
           <main className="center">
             {toolbar}
+            {tools && <div className="tool-row">{extraTools}</div>}
             <Canvas />
             <SlideStrip />
           </main>
 
           {sheet && (
-            <div className="sheet">
+            <div className={`sheet ${sheetBig ? 'big' : ''}`}>
+              {/* the grab bar: tap (or drag) to switch between half and full height */}
+              <button className="sheet-grab" onClick={() => setSheetBig((v) => !v)} title={sheetBig ? 'Zmniejsz' : 'Powiększ'}>
+                <span />
+              </button>
               <div className="sheet-head">
-                <b>
-                  {{ ai: 'AI', gallery: 'Galeria', layouts: 'Układy', stories: 'Relacje', edit: 'Edycja', tips: 'Wskazówki' }[sheet]}
-                </b>
-                <button className="btn ghost icon" onClick={() => setSheet(null)}>
-                  <X />
-                </button>
+                <b>{{ ai: 'AI', gallery: 'Galeria', layouts: 'Układy', stories: 'Relacje', edit: 'Edycja', tips: 'Wskazówki' }[sheet]}</b>
+                <span className="row" style={{ gap: 4 }}>
+                  <button className="btn ghost sm" onClick={() => setSheetBig((v) => !v)}>
+                    {sheetBig ? '▾ Mniej' : '▴ Więcej'}
+                  </button>
+                  <button className="btn ghost icon" onClick={() => setSheet(null)}>
+                    <X />
+                  </button>
+                </span>
               </div>
-              <div className="sheet-body">{panelFor(sheet)}</div>
+              {/* the AI panel scrolls internally and pins its composer, so it gets the full sheet box */}
+              <div className={`sheet-body ${sheet === 'ai' ? 'flush' : ''}`}>{panelFor(sheet)}</div>
             </div>
           )}
 
@@ -279,11 +304,11 @@ export default function App() {
             {(
               [
                 ['ai', 'AI', <Sparkles size={18} key="a" />],
-                ['gallery', 'Galeria', <ImageIcon size={18} key="g" />],
+                ['gallery', 'Zdjęcia', <ImageIcon size={18} key="g" />],
                 ['layouts', 'Układy', <Layout size={18} key="l" />],
                 ['stories', 'Relacje', <Story size={18} key="s" />],
-                ['edit', 'Edycja', <Type size={18} key="e" />],
-                ['tips', 'Wskazówki', <Bulb size={18} key="t" />],
+                ['edit', 'Tekst', <Type size={18} key="e" />],
+                ['tips', 'Rady', <Bulb size={18} key="t" />],
               ] as [Sheet, string, React.ReactNode][]
             ).map(([k, label, icon]) => (
               <button

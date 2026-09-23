@@ -5,6 +5,7 @@ import { fitSlots } from '../lib/slot'
 import { buildSlide, ROLE_GROUPS, templatesFor, type TemplateDef } from '../presets/templates'
 import { allPresets, useSlide, usePreset, useStore } from '../store'
 import type { Slide } from '../types'
+import { Fold } from './Fold'
 import { SlideThumb } from './SlideView'
 
 export function LayoutsPanel() {
@@ -55,8 +56,7 @@ export function LayoutsPanel() {
 
   return (
     <div>
-      <div className="field">
-        <span className="label">Styl karuzeli</span>
+      <Fold title="Styl karuzeli">
         <div className="style-pick">
           {allPresets(customPresets).map((p) => (
             <button key={p.id} className={p.id === preset.id ? 'on' : ''} onClick={() => st().mutate((pr) => (pr.presetId = p.id))}>
@@ -68,7 +68,7 @@ export function LayoutsPanel() {
         <div className="tiny dim" style={{ marginTop: 6 }}>
           Zmiana stylu przestylizuje wszystkie slajdy — pozycje zostają.
         </div>
-      </div>
+      </Fold>
 
       <div className="row" style={{ marginBottom: 14, alignItems: 'flex-start' }}>
         <div className="tiny muted grow">
@@ -79,14 +79,8 @@ export function LayoutsPanel() {
         </button>
       </div>
 
-      {groups.map((g) => (
-        <div key={g.role} style={{ marginBottom: 18 }}>
-          <div className="group-head">
-            <span className="label" style={{ margin: 0 }}>
-              {g.label}
-            </span>
-            <span className="tiny dim">{g.hint}</span>
-          </div>
+      {groups.map((g, gi) => (
+        <Fold key={g.role} title={g.label} badge={<span className="tiny dim">{g.hint}</span>} openOnMobile={gi === 0}>
           <div className="tpl-grid">
             {g.items.map((t) => (
               <div key={t.id} className="tpl" role="button" onClick={() => apply(t)} title={`${t.description}\nKliknij: zastosuj do bieżącego slajdu (za każdym razem inny układ)`}>
@@ -108,7 +102,7 @@ export function LayoutsPanel() {
               </div>
             ))}
           </div>
-        </div>
+        </Fold>
       ))}
     </div>
   )
