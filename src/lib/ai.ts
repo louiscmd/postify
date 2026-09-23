@@ -241,7 +241,7 @@ export const aiErrorMessage = (e: unknown) => {
   if (e instanceof Anthropic.RateLimitError) return 'Przekroczono limit zapytań. Odczekaj chwilę i spróbuj ponownie.'
   // the key works, the account simply has no API credits — subscriptions (Pro/Max) don't cover the API
   if (e instanceof Anthropic.APIError && /credit balance is too low/i.test(e.message))
-    return 'Brak środków na koncie Anthropic. Klucz działa, ale trzeba doładować kredyty API na console.anthropic.com → Plans & Billing (abonament Claude Pro/Max nie obejmuje API).'
+    return 'Brak kredytów API na koncie Anthropic. Klucz działa — brakuje tylko środków. To inny licznik niż procent zużycia w aplikacji Claude: abonament Pro/Max nie płaci za API. Doładuj na console.anthropic.com → Plans & Billing (sprawdź, czy jesteś w tej organizacji, do której należy klucz).'
   if (e instanceof Anthropic.PermissionDeniedError) return 'Ten klucz nie ma dostępu do wybranego modelu. Zmień model w Ustawieniach lub sprawdź uprawnienia klucza.'
   if (e instanceof Anthropic.BadRequestError) return `Błędne zapytanie: ${e.message}`
   if (e instanceof Anthropic.APIConnectionError) return 'Brak połączenia z API Anthropic.'
