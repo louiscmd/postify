@@ -6,11 +6,10 @@ import { Bulb, Copy, Download, Folder, Gear, Grid, Hand, ImageIcon, Layout, Pale
 import { Inspector } from './components/Inspector'
 import { LayoutsPanel } from './components/LayoutsPanel'
 import { StoriesPanel } from './components/StoriesPanel'
-import { AccountModal, PresetsModal, ProjectsModal, SettingsModal } from './components/Modals'
+import { AccountModal, ExportModal, PresetsModal, ProjectsModal, SettingsModal } from './components/Modals'
 import { initAccounts } from './lib/account'
 import { SlideStrip } from './components/SlideStrip'
 import { TipsPanel } from './components/TipsPanel'
-import { exportZip } from './lib/export'
 import { rerollSlides } from './lib/reroll'
 import { allPresets, usePreset, useStore, type LeftTab } from './store'
 
@@ -99,18 +98,7 @@ export default function App() {
   const story = s.project.format === 'story'
   const aiMode = s.leftTab === 'ai'
 
-  const doExport = async () => {
-    setProgress('Przygotowuję…')
-    try {
-      await exportZip(s.project.name, s.project.slides, preset, s.imageMap, (d, t) => setProgress(`Renderuję ${story ? 'klatkę' : 'slajd'} ${Math.min(d + 1, t)} z ${t}…`))
-      s.notify(`Pobrano ${s.project.slides.length} PNG (${story ? '1080×1920' : '1080×1350'}) w ZIP`)
-    } catch (e) {
-      console.error(e)
-      s.notify('Eksport nie powiódł się — spróbuj ponownie')
-    } finally {
-      setProgress(null)
-    }
-  }
+  const doExport = () => s.set({ modal: 'export' })
 
   if (!s.ready)
     return (
@@ -233,7 +221,7 @@ export default function App() {
             ⋯
           </button>
         )}
-        <button className="btn primary" onClick={doExport} disabled={!!progress} title="Eksport PNG (ZIP)">
+        <button className="btn primary" onClick={doExport} title="Zapisz PNG — galeria telefonu lub pobieranie">
           <Download /> <span className="hide-sm">Eksport ZIP</span>
         </button>
       </header>
@@ -372,6 +360,7 @@ export default function App() {
       {s.modal === 'projects' && <ProjectsModal />}
       {s.modal === 'presets' && <PresetsModal />}
       {s.modal === 'account' && <AccountModal />}
+      {s.modal === 'export' && <ExportModal />}
       {s.toast && <div className="toast">{s.toast}</div>}
       {progress && (
         <div className="progress">

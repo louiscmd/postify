@@ -1,14 +1,15 @@
-import { useMemo, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { FONTS } from '../fonts'
 import { MODELS } from '../lib/ai'
 import { auth, syncNow } from '../lib/account'
 import { authErrorPl, cloudConfigError, cloudEnabled } from '../lib/cloud'
+import { canShareImages, downloadFile, renderSlidePngs, sharePngs, zipFiles } from '../lib/export'
 import { cleanApiKey, uid } from '../lib/util'
 import { SHADOW_LABELS, STYLE_LABELS } from '../presets'
 import { buildSlide, TEMPLATES } from '../presets/templates'
 import { allPresets, useStore } from '../store'
 import type { Preset, StyleKey, TextStyle } from '../types'
-import { Copy, Plus, Trash, X } from './Icons'
+import { Copy, Download, Plus, Trash, X } from './Icons'
 import { SlideThumb } from './SlideView'
 
 function Modal({ title, onClose, children, narrow }: { title: string; onClose: () => void; children: ReactNode; narrow?: boolean }) {
@@ -446,6 +447,113 @@ export function AccountModal() {
       <p className="tiny dim" style={{ marginBottom: 0 }}>
         Po pierwszym zalogowaniu Postify zaproponuje przeniesienie projektów i zdjęć z tej przeglądarki do konta.
       </p>
+    </Modal>
+  )
+}
+
+// ── Export ───────────────────────────────────────────────────
+const plural = (n: number, one: string, few: string, many: string) => {
+  const t = n % 10
+  const h = n % 100
+  if (n === 1) return one
+  if (t >= 2 && t <= 4 && (h < 12 || h > 14)) return few
+  return many
+}
+
+export function ExportModal() {
+  const project = useStore((s) => s.project)
+  const images = useStore((s) => s.imageMap)
+  const custom = useStore((s) => s.customPresets)
+  const preset = allPresets(custom).find((p) => p.id === project.presetId) ?? allPresets(custom)[0]
+  const story = project.format === 'story'
+  const [files, setFiles] = useState<File[] | null>(null)
+  const [urls, setUrls] = useState<string[]>([])
+  const [progress, setProgress] = useState('Renderuję…')
+  const [err, setErr] = useState('')
+  const [done, setDone] = useState('')
+
+  useEffect(() => {
+    let alive = true
+    renderSlidePngs(project.name, project.slides, preset, images, (d, t) => alive && setProgress(`Renderuję ${Math.min(d + 1, t)} z ${t}…`))
+      .then((f) => {
+        if (!alive) return
+        setFiles(f)
+        setUrls(f.map((x) => URL.createObjectURL(x)))
+      })
+      .catch((e) => alive && setErr((e as Error).message))
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => () => urls.forEach((u) => URL.revokeObjectURL(u)), [urls])
+
+  const canShare = !!files && canShareImages(files)
+
+  return (
+    <Modal title={`Eksport — ${project.slides.length} ${story ? plural(project.slides.length, 'klatka', 'klatki', 'klatek') : plural(project.slides.length, 'slajd', 'slajdy', 'slajdów')} PNG`} onClose={close} narrow>
+      {!files && !err && (
+        <div className="row" style={{ marginBottom: 14 }}>
+          <span className="spinner" /> {progress}
+        </div>
+      )}
+      {err && <div className="msg err" style={{ marginBottom: 14 }}>{err}</div>}
+
+      {files && (
+        <>
+          <div className="export-grid">
+            {urls.map((u, i) => (
+              <a key={u} href={u} download={files[i].name} className="export-thumb" title={`Zapisz ${files[i].name}`}>
+                <img src={u} alt="" />
+                <span>{i + 1}</span>
+              </a>
+            ))}
+          </div>
+          <div className="tiny dim" style={{ margin: '10px 0 14px' }}>
+            {files[0] && `${story ? '1080 × 1920' : '1080 × 1350'} px · PNG · ${Math.round(files.reduce((n, f) => n + f.size, 0) / 1048576 * 10) / 10} MB`}
+            {' · '}Przytrzymaj miniaturę, aby zapisać pojedyncze zdjęcie.
+          </div>
+
+          {canShare && (
+            <>
+              <button
+                className="btn primary"
+                style={{ width: '100%', marginBottom: 8 }}
+                onClick={async () => {
+                  setDone('')
+                  try {
+                    await sharePngs(files, project.name)
+                    setDone('Wysłano do systemu — wybierz „Zapisz obrazy”, aby trafiły do galerii.')
+                  } catch (e) {
+                    if ((e as Error).name !== 'AbortError') setErr((e as Error).message)
+                  }
+                }}
+              >
+                <Download size={15} /> Zapisz w galerii telefonu
+              </button>
+              <div className="tiny dim" style={{ marginBottom: 12 }}>
+                Otworzy się okno udostępniania — wybierz <b>Zapisz {files.length} obrazów</b> (iPhone) lub <b>Zapisz w Zdjęciach</b>.
+              </div>
+            </>
+          )}
+
+          {!canShare && (
+            <div className="tiny dim" style={{ marginBottom: 10 }}>
+              Zapis wprost do galerii działa na telefonie (iPhone / Android). Tutaj pobierz pliki na dysk.
+            </div>
+          )}
+          <div className="row">
+            <button className="btn grow" onClick={() => files.forEach(downloadFile)}>
+              Pobierz pojedynczo
+            </button>
+            <button className="btn grow" onClick={() => zipFiles(project.name, files)}>
+              Pobierz ZIP
+            </button>
+          </div>
+          {done && <div className="msg bot" style={{ marginTop: 12 }}>{done}</div>}
+        </>
+      )}
     </Modal>
   )
 }

@@ -9,7 +9,7 @@ import { FORMATS, type El, type FormatKey, type GalleryImage, type Preset, type 
 import { STORY_TYPES } from './presets/stories'
 
 export type LeftTab = 'ai' | 'gallery' | 'layouts' | 'stories'
-export type Modal = null | 'projects' | 'presets' | 'settings' | 'account'
+export type Modal = null | 'projects' | 'presets' | 'settings' | 'account' | 'export'
 
 interface State {
   ready: boolean

@@ -9,7 +9,7 @@ It has two modes:
 
 Photos can be any size, shape or file: JPG, PNG, WEBP, AVIF, GIF, BMP and **HEIC from an iPhone** (converted in the browser). The real format is read from the file's bytes, so a HEIC or TIFF named `.jpg` is handled correctly, and anything unreadable says exactly why. Very large photos are scaled down to fit the editor; a panorama or a very tall shot starts fitted whole inside the frame, everything else fills it. The 4:5 frame is fixed, but the photo slides freely behind it: drag it anywhere, use the wheel to zoom from a tight crop down to the whole photo inside the frame, and the empty edges are filled with a blurred copy of it (or the slide colour). **Wypełnij kadr / Zmieść całość / Skala 1:1 / Wyśrodkuj** are one click away in the right panel.
 
-Export gives you a ZIP of numbered PNGs at 1080×1350, ready to upload.
+Export opens a sheet that renders every slide to a full-size PNG and shows them. On a phone, **Zapisz w galerii** hands them to the system share sheet, where "Save N Images" puts them straight in the camera roll; on a desktop you download them individually or as a ZIP. Photo data is embedded before rendering, because iOS Safari will not fetch blob: URLs while rasterising — that is what produced exports with text but no background.
 
 ## Stories (Relacje)
 
