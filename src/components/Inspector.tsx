@@ -244,9 +244,44 @@ function BlockEditor({ el, b, index }: { el: StackEl; b: Block; index: number })
 // ── element inspectors ───────────────────────────────────────
 function Transform({ el }: { el: StackEl | ImageEl | DoodleEl }) {
   const st = useStore.getState
+  const slide = useSlide()
   const set = (k: 'x' | 'y' | 'w' | 'h' | 'rotation', v: number) => st().updateEl(el.id, (e) => ((e as unknown as Record<string, number>)[k] = v), `${el.id}-${k}`)
+  const nudge = (dx: number, dy: number) =>
+    st().updateEl(el.id, (e) => {
+      e.x += dx
+      e.y += dy
+    })
+  const frameH = slideH(slide)
   return (
     <>
+      {/* fingers are imprecise: move in steps and snap to a zone without dragging */}
+      <div className="nudge">
+        <button className="btn sm" onClick={() => nudge(0, -20)} title="W górę">
+          ↑
+        </button>
+        <div className="row" style={{ gap: 6 }}>
+          <button className="btn sm grow" onClick={() => nudge(-20, 0)}>
+            ←
+          </button>
+          <button className="btn sm grow" onClick={() => nudge(20, 0)}>
+            →
+          </button>
+        </div>
+        <button className="btn sm" onClick={() => nudge(0, 20)} title="W dół">
+          ↓
+        </button>
+      </div>
+      <div className="grid3" style={{ marginBottom: 8 }}>
+        <button className="btn sm" onClick={() => st().updateEl(el.id, (e) => Object.assign(e, { anchor: 'top', y: frameH > 1600 ? 260 : 120 }))}>
+          Góra
+        </button>
+        <button className="btn sm" onClick={() => st().updateEl(el.id, (e) => Object.assign(e, { anchor: 'center', y: Math.round(frameH / 2) }))}>
+          Środek
+        </button>
+        <button className="btn sm" onClick={() => st().updateEl(el.id, (e) => Object.assign(e, { anchor: 'bottom', y: frameH - (frameH > 1600 ? 280 : 110) }))}>
+          Dół
+        </button>
+      </div>
       <div className="grid3">
         <Num label="X" value={el.x} onChange={(v) => set('x', v)} />
         <Num label="Y" value={el.y} onChange={(v) => set('y', v)} />
