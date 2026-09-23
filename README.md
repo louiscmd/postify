@@ -2,6 +2,8 @@
 
 Postify is a web tool for making Instagram carousel posts (4:5, 1080×1350) and stories (9:16, 1080×1920), with a dark, soft-red interface in Polish. It works on a phone as well as a desktop: on narrow screens the panels become bottom sheets with a tab bar, text fields don't trigger iOS zoom, and photos are dragged with a finger and pinched to zoom.
 
+**Nowy** (or *Nowy projekt* in the Projekty modal, and the first time you open the app) asks which frame you are making before anything else: **Post — karuzela 4:5** or **Relacja — story 9:16**, each shown at its real proportions. The frame decides the layouts, the safe areas and how the AI writes, so it is chosen once per project rather than hidden in a dropdown. Picking a story then lists the seven weekly types — create the sequence, or create it and go straight to the AI. Every project in the list carries its 4:5 or 9:16 badge.
+
 It has two modes:
 
 - **Tryb AI (AI mode):** write a prompt such as *„Zrób mi post o…”*. Claude looks at the photos in your gallery, picks one for each slide, writes the copy in your chosen style preset and places the text on the calmest part of each photo. You can then edit everything, or ask for changes in the same chat (*„krótsze teksty”*, *„zamień slajd 3 na listę”*).
@@ -9,7 +11,7 @@ It has two modes:
 
 Photos can be any size, shape or file: JPG, PNG, WEBP, AVIF, GIF, BMP and **HEIC from an iPhone** (converted in the browser). The real format is read from the file's bytes, so a HEIC or TIFF named `.jpg` is handled correctly, and anything unreadable says exactly why. Very large photos are scaled down to fit the editor; a panorama or a very tall shot starts fitted whole inside the frame, everything else fills it. The 4:5 frame is fixed, but the photo slides freely behind it: drag it anywhere, use the wheel to zoom from a tight crop down to the whole photo inside the frame, and the empty edges are filled with a blurred copy of it (or the slide colour). **Wypełnij kadr / Zmieść całość / Skala 1:1 / Wyśrodkuj** are one click away in the right panel.
 
-Export opens a sheet that renders every slide to a full-size PNG and shows them. On a phone, **Zapisz w galerii** hands them to the system share sheet, where "Save N Images" puts them straight in the camera roll; on a desktop you download them individually or as a ZIP. Photo data is embedded before rendering, because iOS Safari will not fetch blob: URLs while rasterising — that is what produced exports with text but no background.
+Export opens a sheet that renders every slide to a full-size PNG and shows them. On a phone, **Zapisz w galerii** hands them to the system share sheet, where "Save N Images" puts them straight in the camera roll; on a desktop you download them individually or as a ZIP. Each PNG is composited in two passes: photos, blurred fills and the darkening gradients are drawn on a canvas, and the text is rasterised on top with a transparent background. No photo goes through the SVG path, because iOS Safari does not reliably rasterise images inside a foreignObject — that is what produced exports with text but no background.
 
 ## Stories (Relacje)
 

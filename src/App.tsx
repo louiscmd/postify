@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 import { AIPanel } from './components/AIPanel'
 import { Canvas } from './components/Canvas'
 import { Gallery } from './components/Gallery'
-import { Bulb, Copy, Download, Folder, Gear, Grid, Hand, ImageIcon, Layout, Palette, Redo, Sparkles, Story, Trash, Type, Undo, X } from './components/Icons'
+import { Bulb, Copy, Download, Folder, Gear, Grid, Hand, ImageIcon, Layout, Palette, Plus, Redo, Sparkles, Story, Trash, Type, Undo, X } from './components/Icons'
 import { Inspector } from './components/Inspector'
 import { LayoutsPanel } from './components/LayoutsPanel'
 import { StoriesPanel } from './components/StoriesPanel'
-import { AccountModal, ExportModal, PresetsModal, ProjectsModal, SettingsModal } from './components/Modals'
+import { AccountModal, ExportModal, NewProjectModal, PresetsModal, ProjectsModal, SettingsModal } from './components/Modals'
 import { initAccounts } from './lib/account'
 import { SlideStrip } from './components/SlideStrip'
 import { TipsPanel } from './components/TipsPanel'
@@ -193,6 +193,9 @@ export default function App() {
             <button className="btn ghost icon" title="Ponów (Ctrl+Y)" disabled={!s.future.length} onClick={s.redo}>
               <Redo />
             </button>
+            <button className="btn ghost" onClick={() => s.set({ modal: 'new' })} title="Nowy projekt — post 4:5 albo relacja 9:16">
+              <Plus /> Nowy
+            </button>
             <button className="btn ghost" onClick={() => s.set({ modal: 'projects' })}>
               <Folder /> Projekty
             </button>
@@ -234,6 +237,9 @@ export default function App() {
           </button>
           <button className="btn ghost" disabled={!s.future.length} onClick={s.redo}>
             <Redo /> Ponów
+          </button>
+          <button className="btn ghost" onClick={() => s.set({ modal: 'new' })}>
+            <Plus /> Nowy projekt
           </button>
           <button className="btn ghost" onClick={() => s.set({ modal: 'projects' })}>
             <Folder /> Projekty
@@ -357,6 +363,7 @@ export default function App() {
       )}
 
       {s.modal === 'settings' && <SettingsModal />}
+      {s.modal === 'new' && <NewProjectModal />}
       {s.modal === 'projects' && <ProjectsModal />}
       {s.modal === 'presets' && <PresetsModal />}
       {s.modal === 'account' && <AccountModal />}

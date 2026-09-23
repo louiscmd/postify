@@ -6,10 +6,11 @@ import { authErrorPl, cloudConfigError, cloudEnabled } from '../lib/cloud'
 import { canShareImages, downloadFile, renderSlidePngs, sharePngs, zipFiles } from '../lib/export'
 import { cleanApiKey, uid } from '../lib/util'
 import { SHADOW_LABELS, STYLE_LABELS } from '../presets'
+import { STORY_TYPES } from '../presets/stories'
 import { buildSlide, TEMPLATES } from '../presets/templates'
 import { allPresets, useStore } from '../store'
-import type { Preset, StyleKey, TextStyle } from '../types'
-import { Copy, Download, Plus, Trash, X } from './Icons'
+import { FORMATS, type FormatKey, type Preset, type StyleKey, type TextStyle } from '../types'
+import { Copy, Download, Left, Plus, Sparkles, Trash, X } from './Icons'
 import { SlideThumb } from './SlideView'
 
 function Modal({ title, onClose, children, narrow }: { title: string; onClose: () => void; children: ReactNode; narrow?: boolean }) {
@@ -29,6 +30,15 @@ function Modal({ title, onClose, children, narrow }: { title: string; onClose: (
 }
 
 const close = () => useStore.setState({ modal: null })
+
+/** Polish counts: 1 slajd, 2 slajdy, 5 slajdów. */
+const plural = (n: number, one: string, few: string, many: string) => {
+  const t = n % 10
+  const h = n % 100
+  if (n === 1) return one
+  if (t >= 2 && t <= 4 && (h < 12 || h > 14)) return few
+  return many
+}
 
 // ── Settings ─────────────────────────────────────────────────
 export function SettingsModal() {
@@ -105,6 +115,107 @@ export function SettingsModal() {
   )
 }
 
+// ── New project: pick the frame first ────────────────────────
+/**
+ * Post and story are not interchangeable — the frame decides the layouts, the safe
+ * areas and what the AI writes — so a new project starts by choosing one, shown at
+ * its real proportions rather than named in a dropdown.
+ */
+export function NewProjectModal() {
+  const [fmt, setFmt] = useState<FormatKey | null>(null)
+  const customPresets = useStore((s) => s.customPresets)
+  const presetId = useStore((s) => s.project.presetId)
+  const st = useStore.getState
+  const presets = allPresets(customPresets)
+  const preset = presets.find((p) => p.id === presetId) ?? presets[0]
+
+  const start = (fn: () => void, ai: boolean) => {
+    fn()
+    useStore.setState({ leftTab: ai ? 'ai' : 'gallery' })
+  }
+
+  if (!fmt)
+    return (
+      <Modal title="Nowy projekt" onClose={close} narrow>
+        <div className="hint" style={{ marginBottom: 14 }}>
+          Wybierz format. Od niego zależą układy, marginesy bezpieczne i to, jak AI pisze treść — później zmienia się go tylko przez nowy projekt.
+        </div>
+        <div className="fmt-pick">
+          {(['post', 'story'] as FormatKey[]).map((k) => (
+            <button key={k} className="fmt-card" onClick={() => setFmt(k)}>
+              <div className={`fmt-frame ${k}`}>{k === 'post' ? '4:5' : '9:16'}</div>
+              <b>{k === 'post' ? 'Post — karuzela' : 'Relacja — story'}</b>
+              <span className="tiny dim">
+                {FORMATS[k].hint}
+                <br />
+                {k === 'post' ? 'Zostaje w feedzie, kilka slajdów przesuwanych w bok.' : 'Znika po 24 h, pionowa klatka na cały ekran.'}
+              </span>
+            </button>
+          ))}
+        </div>
+      </Modal>
+    )
+
+  return (
+    <Modal title={fmt === 'post' ? 'Nowa karuzela 4:5' : 'Nowa relacja 9:16'} onClose={close} narrow>
+      <button className="btn ghost sm" style={{ marginBottom: 12 }} onClick={() => setFmt(null)}>
+        <Left size={13} /> Zmień format
+      </button>
+
+      <div className="field">
+        <span className="label">Styl</span>
+        <select className="select" value={preset.id} onChange={(e) => st().mutate((p) => (p.presetId = e.target.value))}>
+          {presets.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+              {p.builtin ? '' : ' (własny)'}
+            </option>
+          ))}
+        </select>
+        <div className="tiny dim" style={{ marginTop: 5 }}>
+          {preset.description}
+        </div>
+      </div>
+
+      {fmt === 'post' ? (
+        <div className="row" style={{ marginTop: 16 }}>
+          <button className="btn grow" onClick={() => start(() => st().newBlank('post'), false)}>
+            <Plus size={14} /> Pusta karuzela
+          </button>
+          <button className="btn primary grow" onClick={() => start(() => st().newBlank('post'), true)}>
+            <Sparkles size={14} /> Napisz z AI
+          </button>
+        </div>
+      ) : (
+        <>
+          <span className="label">Typ relacji z Twojego systemu</span>
+          <div className="type-pick">
+            {STORY_TYPES.map((t) => (
+              <div key={t.id} className="type-row">
+                <div className="grow" style={{ minWidth: 0 }}>
+                  <b>{t.name}</b>
+                  <div className="tiny dim">
+                    {t.cadence} · {t.frames.length} {plural(t.frames.length, 'klatka', 'klatki', 'klatek')}
+                  </div>
+                </div>
+                <button className="btn sm" onClick={() => start(() => st().newStory(t.id), false)}>
+                  Utwórz
+                </button>
+                <button className="btn sm primary icon" title="Utwórz i napisz treść z AI" onClick={() => start(() => st().newStory(t.id), true)}>
+                  <Sparkles size={13} />
+                </button>
+              </div>
+            ))}
+          </div>
+          <button className="btn ghost" style={{ marginTop: 12, width: '100%' }} onClick={() => start(() => st().newBlank('story'), false)}>
+            <Plus size={14} /> Pusta relacja — jedna klatka
+          </button>
+        </>
+      )}
+    </Modal>
+  )
+}
+
 // ── Projects ─────────────────────────────────────────────────
 export function ProjectsModal() {
   const projects = useStore((s) => s.projects)
@@ -114,7 +225,7 @@ export function ProjectsModal() {
     <Modal title="Projekty" onClose={close}>
       <div className="row" style={{ marginBottom: 14 }}>
         <span className="grow small muted">{useStore.getState().account ? `Projekty zapisują się automatycznie na koncie ${useStore.getState().account!.email}.` : 'Projekty zapisują się automatycznie w tej przeglądarce. Zaloguj się, aby mieć je na każdym urządzeniu.'}</span>
-        <button className="btn primary" onClick={() => st().newProject()}>
+        <button className="btn primary" onClick={() => useStore.setState({ modal: 'new' })}>
           <Plus size={15} /> Nowy projekt
         </button>
       </div>
@@ -123,9 +234,14 @@ export function ProjectsModal() {
           .sort((a, b) => b.updatedAt - a.updatedAt)
           .map((p) => (
             <div key={p.id} className={`proj ${p.id === current ? 'on' : ''}`} onClick={() => st().openProject(p.id)}>
-              <div style={{ fontWeight: 600, marginBottom: 4 }}>{p.name}</div>
+              <div className="row" style={{ marginBottom: 4, gap: 6 }}>
+                <span className="grow" style={{ fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {p.name}
+                </span>
+                <span className={`badge-fmt ${p.format === 'story' ? '' : 'post'}`}>{p.format === 'story' ? '9:16' : '4:5'}</span>
+              </div>
               <div className="tiny dim">
-                {p.slideCount} slajdów · {new Date(p.updatedAt).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })}
+                {p.slideCount} {p.format === 'story' ? plural(p.slideCount, 'klatka', 'klatki', 'klatek') : plural(p.slideCount, 'slajd', 'slajdy', 'slajdów')} · {new Date(p.updatedAt).toLocaleString('pl-PL', { dateStyle: 'short', timeStyle: 'short' })}
               </div>
               <div className="row" style={{ marginTop: 8, justifyContent: 'flex-end' }}>
                 <button
@@ -452,14 +568,6 @@ export function AccountModal() {
 }
 
 // ── Export ───────────────────────────────────────────────────
-const plural = (n: number, one: string, few: string, many: string) => {
-  const t = n % 10
-  const h = n % 100
-  if (n === 1) return one
-  if (t >= 2 && t <= 4 && (h < 12 || h > 14)) return few
-  return many
-}
-
 export function ExportModal() {
   const project = useStore((s) => s.project)
   const images = useStore((s) => s.imageMap)

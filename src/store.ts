@@ -9,7 +9,7 @@ import { FORMATS, type El, type FormatKey, type GalleryImage, type Preset, type 
 import { STORY_TYPES } from './presets/stories'
 
 export type LeftTab = 'ai' | 'gallery' | 'layouts' | 'stories'
-export type Modal = null | 'projects' | 'presets' | 'settings' | 'account' | 'export'
+export type Modal = null | 'new' | 'projects' | 'presets' | 'settings' | 'account' | 'export'
 
 interface State {
   ready: boolean
@@ -50,6 +50,7 @@ interface State {
   toggleAiImage: (id: string) => void
 
   newProject: (name?: string, presetId?: string, slides?: Slide[], format?: FormatKey, storyType?: string) => void
+  newBlank: (format: FormatKey) => void
   newStory: (typeId: string) => void
   openProject: (id: string) => Promise<void>
   deleteProject: (id: string) => Promise<void>
@@ -99,7 +100,7 @@ const starterProject = (): Project => {
   }
 }
 
-const meta = (p: Project): ProjectMeta => ({ id: p.id, name: p.name, updatedAt: p.updatedAt, slideCount: p.slides.length })
+const meta = (p: Project): ProjectMeta => ({ id: p.id, name: p.name, format: p.format ?? 'post', updatedAt: p.updatedAt, slideCount: p.slides.length })
 
 const persist = debounce(async (p: Project, list: ProjectMeta[]) => {
   await db.saveProject(p)
@@ -176,7 +177,11 @@ export const useStore = create<State>((set, get) => {
       const p = project ?? get().project
       const list = projects.some((m) => m.id === p.id) ? projects : [meta(p), ...projects]
       set({ ready: true, images, imageMap: mapOf(images), customPresets, projects: list, project: p, current: 0, selEl: null, selBlock: null, past: [], future: [], settings: loadSettings() })
-      if (!project) persist(p, list)
+      if (!project) {
+        persist(p, list)
+        // first visit: ask for the frame before anything is drawn
+        set({ modal: 'new' })
+      }
     },
 
     set: (p) => set(p),
@@ -269,6 +274,20 @@ export const useStore = create<State>((set, get) => {
       const projects = [meta(p), ...get().projects]
       set({ project: p, projects, current: 0, selEl: null, selBlock: null, past: [], future: [], lastKey: null, modal: null })
       persist(p, projects)
+    },
+
+    /** Empty project in the chosen frame — one starting slide, no story type. */
+    newBlank(format) {
+      const preset = allPresets(get().customPresets).find((p) => p.id === get().project.presetId) ?? BUILTIN_PRESETS[0]
+      const h = FORMATS[format].h
+      const tpl = templateById(format === 'story' ? 'sv-hook' : 'cover-title')!
+      const day = new Date().toLocaleDateString('pl-PL')
+      get().newProject(
+        format === 'story' ? `Relacja ${day}` : `Karuzela ${day}`,
+        preset.id,
+        [buildSlide(tpl, { preset, imageIds: [], fields: tpl.demo, frameH: h })],
+        format,
+      )
     },
 
     /** Build a whole story sequence from one of the seven schedule types. */

@@ -302,6 +302,28 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .story-type.on { border-color: var(--accent-line); background: var(--accent-soft); }
 .story-type .cadence { font-size: 11px; color: var(--dim); background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
 
+/* ── new project: the frame shown at its real proportions ──── */
+.fmt-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.fmt-card {
+  display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 12px 14px;
+  color: var(--text); font: inherit; cursor: pointer;
+}
+.fmt-card:hover { border-color: var(--accent-line); background: var(--accent-soft); }
+.fmt-card b { font-size: 14px; }
+.fmt-frame {
+  display: grid; place-items: center; border-radius: 8px; margin-bottom: 2px;
+  border: 2px solid var(--accent); background: linear-gradient(160deg, var(--accent-soft), transparent 70%);
+  color: var(--accent); font-size: 12px; font-weight: 700;
+}
+.fmt-frame.post { width: 88px; height: 110px; }
+.fmt-frame.story { width: 62px; height: 110px; }
+.type-pick { display: flex; flex-direction: column; gap: 6px; }
+.type-row { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: var(--r); background: var(--panel-2); padding: 8px 10px; }
+.type-row > .grow { flex: 1; min-width: 0; }
+.type-row:hover { border-color: var(--accent-line); }
+.badge-fmt.post { color: var(--dim); background: var(--bg); border-color: var(--line); }
+
 /* ── mobile: single column, bottom sheets, bigger targets ───── */
 .badge-fmt { font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: 999px; padding: 2px 8px; }
 .menu-sheet {
@@ -309,6 +331,13 @@ input[type='checkbox'] { accent-color: var(--accent); }
   padding: 8px; display: flex; flex-direction: column; gap: 4px; min-width: 210px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
 }
 .menu-sheet .btn { justify-content: flex-start; }
+
+@media (max-width: 860px) {
+  .fmt-card { padding: 12px 8px; }
+  .fmt-frame.post { width: 70px; height: 88px; }
+  .fmt-frame.story { width: 50px; height: 88px; }
+  .type-row { padding: 10px; }
+}
 
 @media (max-width: 860px) {
   .hide-sm { display: none !important; }

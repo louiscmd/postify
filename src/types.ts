@@ -190,6 +190,8 @@ export interface Project {
 export interface ProjectMeta {
   id: string
   name: string
+  /** absent on projects saved before stories existed — those are all 4:5 posts */
+  format?: FormatKey
   updatedAt: number
   slideCount: number
 }
