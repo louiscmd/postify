@@ -100,34 +100,83 @@ interface Decoded {
 }
 
 /**
+ * What the file actually is, read from its first bytes — file names and MIME types lie
+ * (an iPhone HEIC saved as "photo.jpg" is common, and so are TIFFs with a .jpg name).
+ */
+export async function sniffType(file: Blob): Promise<string> {
+  const b = new Uint8Array(await file.slice(0, 16).arrayBuffer())
+  const at = (i: number, ...bytes: number[]) => bytes.every((v, k) => b[i + k] === v)
+  const ascii = (i: number, len: number) => String.fromCharCode(...b.slice(i, i + len))
+  if (at(0, 0xff, 0xd8, 0xff)) return 'image/jpeg'
+  if (at(0, 0x89, 0x50, 0x4e, 0x47)) return 'image/png'
+  if (ascii(0, 3) === 'GIF') return 'image/gif'
+  if (ascii(0, 4) === 'RIFF' && ascii(8, 4) === 'WEBP') return 'image/webp'
+  if (ascii(0, 2) === 'BM') return 'image/bmp'
+  if (at(0, 0x49, 0x49, 0x2a, 0x00) || at(0, 0x4d, 0x4d, 0x00, 0x2a)) return 'image/tiff'
+  if (ascii(0, 4) === '%PDF') return 'application/pdf'
+  if (at(0, 0xff, 0x0a) || at(0, 0x00, 0x00, 0x00, 0x0c, 0x4a, 0x58, 0x4c, 0x20)) return 'image/jxl'
+  if (ascii(4, 4) === 'ftyp') {
+    const brand = ascii(8, 4)
+    if (brand.startsWith('avi')) return 'image/avif'
+    if (/heic|heix|hevc|hevx|mif1|msf1|heis/.test(brand)) return 'image/heic'
+  }
+  return ''
+}
+
+const FORMAT_HELP: Record<string, string> = {
+  'image/tiff': 'to plik TIFF — przeglądarki go nie otwierają; zapisz jako JPG lub PNG',
+  'image/jxl': 'to plik JPEG XL — zapisz jako JPG lub PNG',
+  'application/pdf': 'to plik PDF, nie zdjęcie',
+  '': 'nie rozpoznano formatu — plik może być uszkodzony',
+}
+
+/**
  * Decode whatever the browser can read. Some JPEGs (CMYK, unusual colour profiles, odd
  * EXIF) are refused by createImageBitmap but load fine as an <img>, so try both.
  */
 async function decode(file: File): Promise<Decoded> {
-  for (const opts of [{ imageOrientation: 'from-image' as const }, undefined]) {
-    try {
-      const bmp = await createImageBitmap(file, opts)
-      if (bmp.width && bmp.height) return { src: bmp, w: bmp.width, h: bmp.height, release: () => bmp.close() }
-      bmp.close()
-    } catch {
-      /* try the next decoder */
+  if (file.size === 0) throw new Error('plik jest pusty (0 bajtów)')
+  const real = await sniffType(file)
+
+  // HEIC/HEIF (iPhone) — no browser decodes it, so convert it here; the decoder loads on demand
+  if (real === 'image/heic') {
+    const { heicTo } = await import('heic-to')
+    const jpeg = await heicTo({ blob: file, type: 'image/jpeg', quality: 0.92 }).catch(() => {
+      throw new Error('to zdjęcie HEIC (iPhone) i nie udało się go przekonwertować — wyślij je jako JPG')
+    })
+    const bmp = await createImageBitmap(jpeg as Blob)
+    return { src: bmp, w: bmp.width, h: bmp.height, release: () => bmp.close() }
+  }
+
+  // Re-tag the bytes with the detected type: the <img> fallback trusts the blob's MIME type,
+  // and files arrive with a missing or wrong one surprisingly often.
+  const blob = real && real !== file.type ? new Blob([file], { type: real }) : file
+  for (const src of [blob, file]) {
+    for (const opts of [{ imageOrientation: 'from-image' as const }, undefined]) {
+      try {
+        const bmp = await createImageBitmap(src, opts)
+        if (bmp.width && bmp.height) return { src: bmp, w: bmp.width, h: bmp.height, release: () => bmp.close() }
+        bmp.close()
+      } catch {
+        /* try the next decoder */
+      }
     }
   }
-  const url = URL.createObjectURL(file)
+  const url = URL.createObjectURL(blob)
   try {
     const img = new Image()
     img.src = url
     await img.decode()
     if (!img.naturalWidth || !img.naturalHeight) throw new Error('0×0')
     return { src: img, w: img.naturalWidth, h: img.naturalHeight, release: () => URL.revokeObjectURL(url) }
-  } catch (e) {
+  } catch {
     URL.revokeObjectURL(url)
-    const hint = /hei[cf]/i.test(file.type + file.name)
-      ? 'przeglądarki nie czytają HEIC — zapisz jako JPG'
-      : file.size === 0
-        ? 'plik jest pusty'
-        : 'plik może być uszkodzony lub w nietypowym wariancie (np. CMYK)'
-    throw new Error(`nie udało się odczytać zdjęcia — ${hint}`)
+    const help =
+      FORMAT_HELP[real] ??
+      (real === 'image/jpeg'
+        ? 'plik JPG wygląda na uszkodzony lub zapisany w nietypowym wariancie — otwórz go w podglądzie i zapisz ponownie'
+        : `przeglądarka nie odczytała tego pliku (${real})`)
+    throw new Error(`nie udało się odczytać zdjęcia — ${help}`)
   }
 }
 

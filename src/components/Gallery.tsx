@@ -38,7 +38,7 @@ export function Gallery({ selectMode = false }: { selectMode?: boolean }) {
       >
         <Upload size={20} />
         <div style={{ fontWeight: 600, marginTop: 6 }}>Importuj zdjęcia</div>
-        <div className="tiny">Kliknij lub upuść pliki (JPG, PNG, WEBP)</div>
+        <div className="tiny">Kliknij lub upuść pliki — JPG, PNG, WEBP, HEIC z iPhone, dowolny rozmiar i kształt</div>
         <input
           ref={input}
           type="file"

@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { cloud, cloudEnabled } from './lib/cloud'
-import { db, IMAGE_EXT, importFile } from './lib/db'
+import { db, IMAGE_EXT, importFile, sniffType } from './lib/db'
 import { initialZoom } from './lib/slot'
 import { debounce, uid } from './lib/util'
 import { BUILTIN_PRESETS } from './presets'
@@ -212,6 +212,9 @@ export const useStore = create<State>((set, get) => {
       const list = all.filter((f) => f.type.startsWith('image/') || IMAGE_EXT.test(f.name))
       const added: GalleryImage[] = []
       const failed: string[] = []
+      // HEIC needs a wasm decoder: say so, it takes a few seconds per photo
+      if ((await Promise.all(list.map((f) => sniffType(f).catch(() => '')))).some((t) => t === 'image/heic'))
+        get().notify('Konwertuję zdjęcia z iPhone (HEIC) — chwilę to potrwa…')
       for (const f of list) {
         try {
           const { meta, blob } = await importFile(f)
