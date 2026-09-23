@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { newSeed } from '../presets/layout'
 import { slideAnalyses } from '../lib/reroll'
+import { fitSlots } from '../lib/slot'
 import { buildSlide, ROLE_GROUPS, TEMPLATES, type TemplateDef } from '../presets/templates'
 import { allPresets, useSlide, usePreset, useStore } from '../store'
 import type { Slide } from '../types'
@@ -30,8 +31,11 @@ export function LayoutsPanel() {
   const make = async (t: TemplateDef): Promise<Slide> => {
     const ids = idsFor(t)
     const draft = buildSlide(t, { preset, imageIds: ids, fields: t.demo })
+    fitSlots(draft.slots, images, draft.layout === 'split' ? 675 : 1350)
     const analyses = await slideAnalyses(draft, images)
-    return buildSlide(t, { preset, imageIds: ids, fields: t.demo, analyses })
+    const out = buildSlide(t, { preset, imageIds: ids, fields: t.demo, analyses })
+    fitSlots(out.slots, images, out.layout === 'split' ? 675 : 1350)
+    return out
   }
 
   const apply = async (t: TemplateDef) => {

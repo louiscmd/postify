@@ -87,23 +87,72 @@ export const db = {
   },
 }
 
-const MAX_EDGE = 4096 // ~4× the export width — big enough to zoom deep into a large photo without blur
+const MAX_EDGE = 4096 // ~4× the export width — deep zoom without blur
+const MAX_PIXELS = 40e6 // browsers refuse to draw canvases much larger than this
 
-/** Import any size/shape; only very large photos are downscaled. PNG keeps transparency. */
+export const IMAGE_EXT = /\.(jpe?g|jpe|jfif|png|webp|avif|gif|bmp|tiff?|heic|heif)$/i
+
+interface Decoded {
+  src: CanvasImageSource
+  w: number
+  h: number
+  release: () => void
+}
+
+/**
+ * Decode whatever the browser can read. Some JPEGs (CMYK, unusual colour profiles, odd
+ * EXIF) are refused by createImageBitmap but load fine as an <img>, so try both.
+ */
+async function decode(file: File): Promise<Decoded> {
+  for (const opts of [{ imageOrientation: 'from-image' as const }, undefined]) {
+    try {
+      const bmp = await createImageBitmap(file, opts)
+      if (bmp.width && bmp.height) return { src: bmp, w: bmp.width, h: bmp.height, release: () => bmp.close() }
+      bmp.close()
+    } catch {
+      /* try the next decoder */
+    }
+  }
+  const url = URL.createObjectURL(file)
+  try {
+    const img = new Image()
+    img.src = url
+    await img.decode()
+    if (!img.naturalWidth || !img.naturalHeight) throw new Error('0×0')
+    return { src: img, w: img.naturalWidth, h: img.naturalHeight, release: () => URL.revokeObjectURL(url) }
+  } catch (e) {
+    URL.revokeObjectURL(url)
+    const hint = /hei[cf]/i.test(file.type + file.name)
+      ? 'przeglądarki nie czytają HEIC — zapisz jako JPG'
+      : file.size === 0
+        ? 'plik jest pusty'
+        : 'plik może być uszkodzony lub w nietypowym wariancie (np. CMYK)'
+    throw new Error(`nie udało się odczytać zdjęcia — ${hint}`)
+  }
+}
+
+/**
+ * Import a photo of any size or shape. Nothing is rejected for its aspect ratio;
+ * oversized photos are scaled down to fit the editor, and the 4:5 frame handles
+ * the framing later (fill / fit / free placement).
+ */
 export async function importFile(file: File): Promise<{ meta: Omit<GalleryImage, 'url'>; blob: Blob }> {
-  const bmp = await createImageBitmap(file)
-  const scale = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height))
-  const w = Math.round(bmp.width * scale)
-  const h = Math.round(bmp.height * scale)
-  const cv = document.createElement('canvas')
-  cv.width = w
-  cv.height = h
-  cv.getContext('2d')!.drawImage(bmp, 0, 0, w, h)
-  bmp.close()
-  const type = file.type === 'image/png' ? 'image/png' : 'image/jpeg'
-  const blob = await new Promise<Blob>((res, rej) => cv.toBlob((b) => (b ? res(b) : rej(new Error('toBlob'))), type, 0.92))
-  return {
-    blob,
-    meta: { id: uid(), name: file.name.replace(/\.[^.]+$/, ''), w, h, type, createdAt: Date.now() },
+  const img = await decode(file)
+  try {
+    const scale = Math.min(1, MAX_EDGE / Math.max(img.w, img.h), Math.sqrt(MAX_PIXELS / (img.w * img.h)))
+    const w = Math.max(1, Math.round(img.w * scale))
+    const h = Math.max(1, Math.round(img.h * scale))
+    const cv = document.createElement('canvas')
+    cv.width = w
+    cv.height = h
+    const ctx = cv.getContext('2d')
+    if (!ctx) throw new Error('przeglądarka nie udostępniła canvasu')
+    ctx.drawImage(img.src, 0, 0, w, h)
+    const type = file.type === 'image/png' || /\.png$/i.test(file.name) ? 'image/png' : 'image/jpeg'
+    const blob = await new Promise<Blob | null>((res) => cv.toBlob(res, type, 0.92))
+    if (!blob || blob.size === 0) throw new Error('zdjęcie jest za duże dla tej przeglądarki — zmniejsz je i spróbuj ponownie')
+    return { blob, meta: { id: uid(), name: file.name.replace(/\.[^.]+$/, '') || 'zdjęcie', w, h, type, createdAt: Date.now() } }
+  } finally {
+    img.release()
   }
 }

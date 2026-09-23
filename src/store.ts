@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { cloud, cloudEnabled } from './lib/cloud'
-import { db, importFile } from './lib/db'
+import { db, IMAGE_EXT, importFile } from './lib/db'
+import { initialZoom } from './lib/slot'
 import { debounce, uid } from './lib/util'
 import { BUILTIN_PRESETS } from './presets'
 import { buildSlide, templateById } from './presets/templates'
@@ -206,17 +207,22 @@ export const useStore = create<State>((set, get) => {
     },
 
     async addFiles(files) {
-      const list = Array.from(files).filter((f) => f.type.startsWith('image/'))
+      // Accept by MIME *or* extension: drops from some apps arrive with an empty or odd type.
+      const all = Array.from(files)
+      const list = all.filter((f) => f.type.startsWith('image/') || IMAGE_EXT.test(f.name))
       const added: GalleryImage[] = []
+      const failed: string[] = []
       for (const f of list) {
         try {
           const { meta, blob } = await importFile(f)
           await db.putImageBlob(meta.id, blob)
           added.push({ ...meta, url: URL.createObjectURL(blob) })
-        } catch {
-          get().notify(/hei[cf]/i.test(f.type + f.name) ? `${f.name}: przeglądarka nie czyta HEIC — zapisz zdjęcie jako JPG` : `Nie udało się wczytać: ${f.name}`)
+        } catch (e) {
+          failed.push(`${f.name}: ${(e as Error).message}`)
         }
       }
+      for (const f of all) if (!list.includes(f)) failed.push(`${f.name}: to nie jest plik graficzny`)
+      if (failed.length) get().notify(failed.length === 1 ? failed[0] : `Nie dodano ${failed.length} plików — ${failed[0]}`)
       const images = [...added, ...get().images]
       set({ images, imageMap: mapOf(images) })
       await db.saveImageIndex(images)
@@ -361,10 +367,12 @@ export const useStore = create<State>((set, get) => {
       })
     },
     setSlotImage(slideIdx, slotIdx, imageId) {
+      const img = imageId ? get().imageMap[imageId] : undefined
       get().mutate((p) => {
         const s = p.slides[slideIdx]
+        const frameH = s.layout === 'split' ? 675 : 1350
         while (s.slots.length <= slotIdx) s.slots.push({ imageId: null, focusX: 50, focusY: 50, zoom: 1, offsetX: 0, offsetY: 0 })
-        s.slots[slotIdx] = { imageId, focusX: 50, focusY: 50, zoom: 1, offsetX: 0, offsetY: 0, blur: s.slots[slotIdx]?.blur }
+        s.slots[slotIdx] = { imageId, focusX: 50, focusY: 50, zoom: img ? initialZoom(img, 1080, frameH) : 1, offsetX: 0, offsetY: 0, blur: s.slots[slotIdx]?.blur }
       })
     },
 

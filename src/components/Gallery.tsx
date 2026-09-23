@@ -42,7 +42,7 @@ export function Gallery({ selectMode = false }: { selectMode?: boolean }) {
         <input
           ref={input}
           type="file"
-          accept="image/*"
+          accept="image/*,.jpg,.jpeg,.jfif,.png,.webp,.avif,.gif,.bmp,.tif,.tiff,.heic,.heif"
           multiple
           hidden
           onChange={(e) => {

@@ -4,6 +4,7 @@ import { create } from 'zustand'
 import { aiErrorMessage, generateCarousel, type AiCarousel } from '../lib/ai'
 import { analyzeSlot } from '../lib/analyze'
 import { slideAnalyses } from '../lib/reroll'
+import { fitSlots } from '../lib/slot'
 import { buildSlide } from '../presets/templates'
 import { allPresets, usePreset, useStore } from '../store'
 import type { GalleryImage, Preset, Role, Slide } from '../types'
@@ -38,8 +39,11 @@ export async function slidesFromAi(res: AiCarousel, preset: Preset, images: Reco
   return Promise.all(
     res.slides.map(async (s) => {
       const draft = buildSlide(s.role, { preset, imageIds: s.imageIds, fields: s.fields })
+      fitSlots(draft.slots, images, draft.layout === 'split' ? 675 : 1350)
       const analyses = await slideAnalyses(draft, images)
-      return buildSlide(s.role, { preset, imageIds: s.imageIds, fields: s.fields, analyses, hint: s.zone })
+      const out = buildSlide(s.role, { preset, imageIds: s.imageIds, fields: s.fields, analyses, hint: s.zone })
+      fitSlots(out.slots, images, out.layout === 'split' ? 675 : 1350)
+      return out
     }),
   )
 }

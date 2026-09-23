@@ -48,6 +48,27 @@ export function slotRect(s: BgSlot, img: ImgSize, sw: number, sh: number): SlotR
 }
 
 /**
+ * Zoom to start a photo at. Normally it fills the frame (like Canva), but a shape far from
+ * 4:5 — a panorama, a very tall shot — would lose most of itself to the crop, so those start
+ * fitted whole inside the frame, with the blurred fill behind them.
+ */
+export const initialZoom = (img: ImgSize, sw: number, sh: number) => {
+  const fit = containZoom(img, sw, sh)
+  // 0.42 ≈ "more than half of the photo would be cropped away": panoramas and very tall shots.
+  // Ordinary landscape/portrait photos still fill the frame, as in Canva.
+  return fit < 0.42 ? Math.round(fit * 1000) / 1000 : 1
+}
+
+/** Give every background slot of a slide a sensible starting zoom for its photo. */
+export function fitSlots(slots: BgSlot[], images: Record<string, { w: number; h: number }>, frameH: number, frameW = 1080) {
+  for (const s of slots) {
+    const img = s.imageId ? images[s.imageId] : undefined
+    if (img && (s.zoom === 1 || s.zoom === undefined) && !s.offsetX && !s.offsetY) s.zoom = initialZoom(img, frameW, frameH)
+  }
+  return slots
+}
+
+/**
  * Keep part of the photo inside the frame so it can never be dragged out of sight.
  * At the limit, `keep` pixels of the photo still overlap the frame.
  */
