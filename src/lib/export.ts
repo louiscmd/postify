@@ -6,6 +6,8 @@ import JSZip from 'jszip'
 import { SlideView } from '../components/SlideView'
 import type { GalleryImage, Preset, Slide } from '../types'
 import { slideH, W } from '../types'
+import { slotRect } from './slot'
+import { loadImg } from './util'
 
 const dataUrl = (blob: Blob) =>
   new Promise<string>((res, rej) => {
@@ -57,7 +59,7 @@ async function withStage<T>(slides: Slide[], preset: Preset, images: Record<stri
           'div',
           null,
           slides.map((s) =>
-            createElement('div', { key: s.id, className: 'export-slide', style: { width: W, height: slideH(s) } }, createElement(SlideView, { slide: s, preset, images: inlined })),
+            createElement('div', { key: s.id, className: 'export-slide', style: { width: W, height: slideH(s) } }, createElement(SlideView, { slide: s, preset, images: inlined, textOnly: true })),
           ),
         ),
       ),
@@ -86,7 +88,124 @@ async function withStage<T>(slides: Slide[], preset: Preset, images: Record<stri
 
 export const safeName = (name: string) => name.replace(/[^\p{L}\p{N}\-_ ]/gu, '').trim().replace(/\s+/g, '-') || 'postify'
 
+const roundRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+  const rad = Math.min(r, w / 2, h / 2)
+  if (ctx.roundRect) {
+    ctx.beginPath()
+    ctx.roundRect(x, y, w, h, rad)
+    return
+  }
+  ctx.beginPath()
+  ctx.moveTo(x + rad, y)
+  ctx.arcTo(x + w, y, x + w, y + h, rad)
+  ctx.arcTo(x + w, y + h, x, y + h, rad)
+  ctx.arcTo(x, y + h, x, y, rad)
+  ctx.arcTo(x, y, x + w, y, rad)
+  ctx.closePath()
+}
+
+/**
+ * Paints the photo layer: backgrounds (with their free zoom/offset and blurred fill),
+ * the darkening overlays and any inset photos — everything the text sits on.
+ *
+ * This is done on a canvas on purpose. Rasterising <img> elements through an SVG
+ * foreignObject is unreliable in iOS Safari, which is what produced exports with the
+ * text but no photos; drawImage always works.
+ */
+async function paintPhotoLayer(ctx: CanvasRenderingContext2D, slide: Slide, images: Record<string, GalleryImage>) {
+  const H = slideH(slide)
+  ctx.fillStyle = slide.bgColor
+  ctx.fillRect(0, 0, W, H)
+
+  const slots = slide.layout === 'split' ? slide.slots.slice(0, 2) : slide.slots.slice(0, 1)
+  const slotH = slide.layout === 'split' ? H / 2 : H
+  for (let i = 0; i < slots.length; i++) {
+    const s = slots[i]
+    const meta = s?.imageId ? images[s.imageId] : undefined
+    if (!meta) continue
+    const el = await loadImg(meta.url).catch(() => null)
+    if (!el) continue
+    const top = i * slotH
+    const r = slotRect(s, meta, W, slotH)
+    ctx.save()
+    ctx.beginPath()
+    ctx.rect(0, top, W, slotH)
+    ctx.clip()
+    if (!r.covers && s.blur !== false) {
+      // same idea as the CSS: a blurred cover copy fills the empty edges
+      const bs = Math.max(W / el.naturalWidth, slotH / el.naturalHeight)
+      const bw = el.naturalWidth * bs
+      const bh = el.naturalHeight * bs
+      // older engines ignore ctx.filter; the copy is then simply dimmed rather than blurred
+      ctx.filter = 'blur(42px) brightness(0.55) saturate(1.1)'
+      ctx.globalAlpha = ctx.filter === 'none' ? 0.45 : 1
+      ctx.drawImage(el, (W - bw) / 2, top + (slotH - bh) / 2, bw, bh)
+      ctx.filter = 'none'
+      ctx.globalAlpha = 1
+    }
+    ctx.drawImage(el, r.left, top + r.top, r.w, r.h)
+    ctx.restore()
+  }
+
+  const o = slide.overlay
+  if (o.dim > 0) {
+    ctx.fillStyle = `rgba(0,0,0,${o.dim})`
+    ctx.fillRect(0, 0, W, H)
+  }
+  if (o.top > 0) {
+    const g = ctx.createLinearGradient(0, 0, 0, H * 0.48)
+    g.addColorStop(0, `rgba(0,0,0,${o.top})`)
+    g.addColorStop(0.46, `rgba(0,0,0,${o.top * 0.55})`)
+    g.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, W, H * 0.48)
+  }
+  if (o.bottom > 0) {
+    const g = ctx.createLinearGradient(0, H, 0, H * 0.55)
+    g.addColorStop(0, `rgba(0,0,0,${o.bottom})`)
+    g.addColorStop(0.36, `rgba(0,0,0,${o.bottom * 0.7})`)
+    g.addColorStop(1, 'rgba(0,0,0,0)')
+    ctx.fillStyle = g
+    ctx.fillRect(0, H * 0.55, W, H * 0.45)
+  }
+
+  for (const el of slide.elements) {
+    if (el.type !== 'image' || !el.imageId) continue
+    const meta = images[el.imageId]
+    if (!meta) continue
+    const src = await loadImg(meta.url).catch(() => null)
+    if (!src) continue
+    ctx.save()
+    ctx.translate(el.x + el.w / 2, el.y + el.h / 2)
+    ctx.rotate((el.rotation * Math.PI) / 180)
+    ctx.translate(-el.w / 2, -el.h / 2)
+    if (el.shadow) {
+      ctx.save()
+      ctx.shadowColor = 'rgba(0,0,0,0.45)'
+      ctx.shadowBlur = 40
+      ctx.shadowOffsetY = 12
+      ctx.fillStyle = '#000'
+      roundRect(ctx, 0, 0, el.w, el.h, el.radius)
+      ctx.fill()
+      ctx.restore()
+    }
+    roundRect(ctx, 0, 0, el.w, el.h, el.radius)
+    ctx.clip()
+    // object-fit: cover with object-position focusX/focusY
+    const k = Math.max(el.w / src.naturalWidth, el.h / src.naturalHeight)
+    const dw = src.naturalWidth * k
+    const dh = src.naturalHeight * k
+    ctx.drawImage(src, (el.w - dw) * (el.focusX / 100), (el.h - dh) * (el.focusY / 100), dw, dh)
+    ctx.restore()
+  }
+}
+
 /** Renders every slide to a real PNG file at full Instagram resolution. */
+/**
+ * Renders every slide to a full-resolution PNG.
+ * Photos go on a canvas (reliable everywhere) and the text layer is rasterised on top
+ * with a transparent background, so no photo ever passes through the SVG path.
+ */
 export async function renderSlidePngs(
   name: string,
   slides: Slide[],
@@ -99,11 +218,20 @@ export async function renderSlidePngs(
     const files: File[] = []
     for (let i = 0; i < nodes.length; i++) {
       onProgress(i, nodes.length)
-      const opts = { width: W, height: slideH(slides[i]), pixelRatio: 1, fontEmbedCSS, cacheBust: false }
-      // Safari's first rasterisation of a node can come back without its images; a second pass is reliable
-      if (i === 0) await toPng(nodes[i], opts)
-      const url = await toPng(nodes[i], opts)
-      const blob = await (await fetch(url)).blob()
+      const H = slideH(slides[i])
+      const cv = document.createElement('canvas')
+      cv.width = W
+      cv.height = H
+      const ctx = cv.getContext('2d')
+      if (!ctx) throw new Error('Przeglądarka nie udostępniła canvasu do eksportu')
+      await paintPhotoLayer(ctx, slides[i], images)
+
+      const textUrl = await toPng(nodes[i], { width: W, height: H, pixelRatio: 1, fontEmbedCSS, cacheBust: false, backgroundColor: 'transparent' })
+      const textImg = await loadImg(textUrl)
+      ctx.drawImage(textImg, 0, 0, W, H)
+
+      const blob = await new Promise<Blob | null>((res) => cv.toBlob(res, 'image/png'))
+      if (!blob) throw new Error('Nie udało się zapisać PNG')
       files.push(new File([blob], `${safeName(name)}-${String(i + 1).padStart(2, '0')}.png`, { type: 'image/png' }))
     }
     onProgress(nodes.length, nodes.length)

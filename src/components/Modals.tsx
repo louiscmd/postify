@@ -524,9 +524,12 @@ export function ExportModal() {
                   setDone('')
                   try {
                     await sharePngs(files, project.name)
-                    setDone('Wysłano do systemu — wybierz „Zapisz obrazy”, aby trafiły do galerii.')
+                    // the share sheet has closed — nothing useful left to say here
+                    useStore.getState().notify('Gotowe')
+                    close()
                   } catch (e) {
-                    if ((e as Error).name !== 'AbortError') setErr((e as Error).message)
+                    if ((e as Error).name === 'AbortError') return // the user closed the sheet
+                    setErr('Nie udało się otworzyć okna zapisu. Zapisz zdjęcia pojedynczo — przytrzymaj miniaturę i wybierz „Zapisz do Zdjęć”.')
                   }
                 }}
               >

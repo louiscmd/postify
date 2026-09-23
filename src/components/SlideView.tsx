@@ -128,7 +128,7 @@ const SlotView = ({ s, img, top, height, showHint }: { s: BgSlot; img?: GalleryI
   )
 }
 
-export const ElementView = ({ el, preset, images }: { el: El; preset: Preset; images: Record<string, GalleryImage> }) => {
+export const ElementView = ({ el, preset, images, hideImage = false }: { el: El; preset: Preset; images: Record<string, GalleryImage>; hideImage?: boolean }) => {
   if (el.type === 'stack') {
     const ty = el.anchor === 'bottom' ? '-100%' : el.anchor === 'center' ? '-50%' : '0'
     return (
@@ -152,6 +152,8 @@ export const ElementView = ({ el, preset, images }: { el: El; preset: Preset; im
     )
   }
   if (el.type === 'image') {
+    // on the export text layer the inset photo is painted on the canvas underneath
+    if (hideImage) return null
     const img = el.imageId ? images[el.imageId] : undefined
     return (
       <div
@@ -205,11 +207,14 @@ export function SlideView({
   preset,
   images,
   showHint = false,
+  textOnly = false,
 }: {
   slide: Slide
   preset: Preset
   images: Record<string, GalleryImage>
   showHint?: boolean
+  /** export path: photos and overlays are painted on a canvas, this layer carries only text */
+  textOnly?: boolean
 }) {
   const o = slide.overlay
   const split = slide.layout === 'split'
@@ -217,18 +222,19 @@ export function SlideView({
   return (
     <div
       className="slide-root"
-      style={{ position: 'relative', width: W, height: H, overflow: 'hidden', background: slide.bgColor, fontKerning: 'normal' }}
+      style={{ position: 'relative', width: W, height: H, overflow: 'hidden', background: textOnly ? 'transparent' : slide.bgColor, fontKerning: 'normal' }}
     >
-      {split ? (
-        <>
-          <SlotView s={slide.slots[0]} img={images[slide.slots[0]?.imageId ?? '']} top={0} height={H / 2} showHint={showHint} />
-          <SlotView s={slide.slots[1] ?? slide.slots[0]} img={images[slide.slots[1]?.imageId ?? '']} top={H / 2} height={H / 2} showHint={showHint} />
-        </>
-      ) : (
-        <SlotView s={slide.slots[0]} img={images[slide.slots[0]?.imageId ?? '']} top={0} height={H} showHint={showHint} />
-      )}
-      {o.dim > 0 && <div style={{ position: 'absolute', inset: 0, background: `rgba(0,0,0,${o.dim})` }} />}
-      {o.top > 0 && (
+      {!textOnly &&
+        (split ? (
+          <>
+            <SlotView s={slide.slots[0]} img={images[slide.slots[0]?.imageId ?? '']} top={0} height={H / 2} showHint={showHint} />
+            <SlotView s={slide.slots[1] ?? slide.slots[0]} img={images[slide.slots[1]?.imageId ?? '']} top={H / 2} height={H / 2} showHint={showHint} />
+          </>
+        ) : (
+          <SlotView s={slide.slots[0]} img={images[slide.slots[0]?.imageId ?? '']} top={0} height={H} showHint={showHint} />
+        ))}
+      {!textOnly && o.dim > 0 && <div style={{ position: 'absolute', inset: 0, background: `rgba(0,0,0,${o.dim})` }} />}
+      {!textOnly && o.top > 0 && (
         <div
           style={{
             position: 'absolute',
@@ -237,7 +243,7 @@ export function SlideView({
           }}
         />
       )}
-      {o.bottom > 0 && (
+      {!textOnly && o.bottom > 0 && (
         <div
           style={{
             position: 'absolute',
@@ -247,7 +253,7 @@ export function SlideView({
         />
       )}
       {slide.elements.map((el) => (
-        <ElementView key={el.id} el={el} preset={preset} images={images} />
+        <ElementView key={el.id} el={el} preset={preset} images={textOnly ? {} : images} hideImage={textOnly} />
       ))}
     </div>
   )
