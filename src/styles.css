@@ -36,7 +36,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 /* ── app shell ───────────────────────────── */
-.app { display: grid; grid-template-rows: 56px 1fr; height: 100%; }
+.app { display: grid; grid-template-rows: 56px 1fr; height: 100dvh; max-height: 100dvh; }
 .header {
   display: flex; align-items: center; gap: 12px; padding: 0 14px;
   border-bottom: 1px solid var(--line); background: linear-gradient(180deg, #171213, #130f10);
@@ -290,3 +290,69 @@ input[type='checkbox'] { accent-color: var(--accent); }
 .account-btn.syncing .avatar { animation: pulse 1.2s ease-in-out infinite; }
 .account-btn.error .avatar { background: rgba(239,107,107,.15); border-color: rgba(239,107,107,.5); color: var(--bad); }
 @keyframes pulse { 50% { opacity: 0.45; } }
+
+/* story: bands where Instagram's own UI sits */
+.ui-band { position: absolute; pointer-events: none; background: repeating-linear-gradient(135deg, rgba(95,208,255,0.09) 0 8px, transparent 8px 16px); border-bottom: 1px dashed rgba(95,208,255,0.3); border-top: 1px dashed rgba(95,208,255,0.3); }
+
+/* ── stories panel ──────────────────────── */
+.week-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
+.week-item { display: flex; gap: 6px; align-items: baseline; font-size: 12px; color: var(--muted); }
+.week-item b { color: var(--accent); font-size: 13px; }
+.story-type { border: 1px solid var(--line); border-radius: var(--r); padding: 11px; margin-bottom: 10px; background: var(--panel-2); }
+.story-type.on { border-color: var(--accent-line); background: var(--accent-soft); }
+.story-type .cadence { font-size: 11px; color: var(--dim); background: var(--bg); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+
+/* ── mobile: single column, bottom sheets, bigger targets ───── */
+.badge-fmt { font-size: 11px; font-weight: 700; color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent-line); border-radius: 999px; padding: 2px 8px; }
+.menu-sheet {
+  position: fixed; top: 52px; right: 8px; z-index: 60; background: var(--panel); border: 1px solid var(--line-2); border-radius: var(--r);
+  padding: 8px; display: flex; flex-direction: column; gap: 4px; min-width: 210px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+}
+.menu-sheet .btn { justify-content: flex-start; }
+
+@media (max-width: 860px) {
+  .hide-sm { display: none !important; }
+  .app { grid-template-rows: 52px 1fr; }
+  .header { gap: 6px; padding: 0 8px; }
+  .header .project-name { min-width: 0; flex: 1; max-width: none; font-size: 13px; }
+  .body.mobile { display: flex; flex-direction: column; min-height: 0; height: 100%; position: relative; }
+  .body.mobile > .center { flex: 1 1 auto; min-height: 0; }
+  .center { min-height: 0; }
+  .canvas-toolbar { padding: 6px 8px; gap: 6px; overflow-x: auto; flex: none; }
+  .canvas-wrap { padding: 4px 8px 6px; flex: 1 1 auto; min-height: 200px; }
+  .strip { min-height: 0; padding: 6px 8px; gap: 6px; flex: none; }
+  .sthumb .sactions { display: none; }
+  .strip .tiny { display: none; }
+  .add-slide { width: 54px; height: 68px; }
+
+  /* part of the column, not fixed to the window — survives mobile URL bars */
+  .tabbar {
+    flex: none; z-index: 40; display: grid; grid-template-columns: repeat(6, 1fr);
+    background: var(--panel); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
+  }
+  .tabbar button {
+    border: 0; background: transparent; color: var(--muted); display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 8px 2px 7px; font-size: 10.5px; cursor: pointer;
+  }
+  .tabbar button.on { color: var(--accent); background: var(--accent-soft); }
+
+  .sheet {
+    position: absolute; left: 0; right: 0; bottom: 56px; z-index: 45; max-height: 64%; display: flex; flex-direction: column;
+    background: var(--panel); border-top: 1px solid var(--line-2); border-radius: 16px 16px 0 0; box-shadow: 0 -20px 50px rgba(0, 0, 0, 0.55);
+  }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid var(--line); }
+  .sheet-body { overflow-y: auto; padding: 12px; -webkit-overflow-scrolling: touch; }
+  .sheet-body > div { min-height: 0; }
+
+  /* touch-friendly controls */
+  .btn { padding: 9px 12px; }
+  .btn.sm { padding: 7px 10px; }
+  .btn.icon { width: 38px; height: 38px; }
+  .input, .select, .textarea { padding: 10px; font-size: 16px; } /* 16px stops iOS zooming on focus */
+  .gallery { grid-template-columns: repeat(4, 1fr); }
+  .tpl-grid { grid-template-columns: 1fr 1fr; }
+  .modal { width: 96vw; max-height: 86vh; }
+  .preset-layout { grid-template-columns: 1fr; }
+  .style-row { grid-template-columns: 96px 1fr 60px; }
+  .style-row > :nth-child(n + 4) { display: none; }
+}

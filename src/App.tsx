@@ -2,16 +2,17 @@ import { useEffect, useState } from 'react'
 import { AIPanel } from './components/AIPanel'
 import { Canvas } from './components/Canvas'
 import { Gallery } from './components/Gallery'
-import { Bulb, Download, Folder, Gear, Grid, Hand, ImageIcon, Layout, Palette, Redo, Sparkles, Undo } from './components/Icons'
+import { Bulb, Copy, Download, Folder, Gear, Grid, Hand, ImageIcon, Layout, Palette, Redo, Sparkles, Story, Trash, Type, Undo, X } from './components/Icons'
 import { Inspector } from './components/Inspector'
 import { LayoutsPanel } from './components/LayoutsPanel'
+import { StoriesPanel } from './components/StoriesPanel'
 import { AccountModal, PresetsModal, ProjectsModal, SettingsModal } from './components/Modals'
 import { initAccounts } from './lib/account'
 import { SlideStrip } from './components/SlideStrip'
 import { TipsPanel } from './components/TipsPanel'
 import { exportZip } from './lib/export'
 import { rerollSlides } from './lib/reroll'
-import { allPresets, usePreset, useStore } from './store'
+import { allPresets, usePreset, useStore, type LeftTab } from './store'
 
 const isTyping = () => {
   const a = document.activeElement as HTMLElement | null
@@ -59,10 +60,27 @@ function useShortcuts() {
   }, [])
 }
 
+/** Phones and narrow windows get the single-column layout with bottom sheets. */
+function useIsMobile() {
+  const [m, setM] = useState(() => window.matchMedia('(max-width: 860px)').matches)
+  useEffect(() => {
+    const q = window.matchMedia('(max-width: 860px)')
+    const on = () => setM(q.matches)
+    q.addEventListener('change', on)
+    return () => q.removeEventListener('change', on)
+  }, [])
+  return m
+}
+
+type Sheet = LeftTab | 'edit' | 'tips' | null
+
 export default function App() {
   const s = useStore()
   const preset = usePreset()
+  const mobile = useIsMobile()
   const [rightTab, setRightTab] = useState<'edit' | 'tips'>('edit')
+  const [sheet, setSheet] = useState<Sheet>(null)
+  const [menu, setMenu] = useState(false)
   const [progress, setProgress] = useState<string | null>(null)
   useShortcuts()
 
@@ -71,13 +89,19 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // selecting something on the canvas opens the editor sheet on a phone
+  useEffect(() => {
+    if (mobile && s.selEl) setSheet('edit')
+  }, [s.selEl, mobile])
+
+  const story = s.project.format === 'story'
   const aiMode = s.leftTab === 'ai'
 
   const doExport = async () => {
     setProgress('Przygotowuję…')
     try {
-      await exportZip(s.project.name, s.project.slides, preset, s.imageMap, (d, t) => setProgress(`Renderuję slajd ${Math.min(d + 1, t)} z ${t}…`))
-      s.notify(`Pobrano ${s.project.slides.length} PNG (1080×1350) w ZIP`)
+      await exportZip(s.project.name, s.project.slides, preset, s.imageMap, (d, t) => setProgress(`Renderuję ${story ? 'klatkę' : 'slajd'} ${Math.min(d + 1, t)} z ${t}…`))
+      s.notify(`Pobrano ${s.project.slides.length} PNG (${story ? '1080×1920' : '1080×1350'}) w ZIP`)
     } catch (e) {
       console.error(e)
       s.notify('Eksport nie powiódł się — spróbuj ponownie')
@@ -93,45 +117,92 @@ export default function App() {
       </div>
     )
 
+  const panelFor = (k: Sheet) =>
+    k === 'ai' ? <AIPanel /> : k === 'layouts' ? <LayoutsPanel /> : k === 'stories' ? <StoriesPanel /> : k === 'gallery' ? <Gallery /> : k === 'tips' ? <TipsPanel /> : <Inspector />
+
+  const toolbar = (
+    <div className="canvas-toolbar">
+      <span className="small muted">
+        {story ? 'Klatka' : 'Slajd'} <b style={{ color: 'var(--text)' }}>{s.current + 1}</b>/{s.project.slides.length}
+        <span className="hide-sm"> · {story ? '1080 × 1920 (9:16)' : '1080 × 1350 (4:5)'}</span>
+      </span>
+      <div className="grow" style={{ flex: 1 }} />
+      <button className="btn sm" onClick={() => rerollSlides([s.current])} title="Nowy losowy układ tej klatki — tekst i zdjęcia zostają (Ctrl+Z cofa)">
+        🎲 <span className="hide-sm">Losuj układ</span>
+      </button>
+      <button className="btn sm hide-sm" onClick={() => rerollSlides(s.project.slides.map((_, i) => i))} title="Nowy losowy układ wszystkich slajdów">
+        Losuj wszystkie
+      </button>
+      <button className={`btn sm ${s.showTips ? 'active' : ''}`} onClick={() => s.set({ showTips: !s.showTips })} title="Pokaż, gdzie tło jest spokojne, a gdzie ruchliwe">
+        <Bulb size={14} /> <span className="hide-sm">Strefy tekstu</span>
+      </button>
+      <button className={`btn sm ${s.showGuides ? 'active' : ''}`} onClick={() => s.set({ showGuides: !s.showGuides })} title="Marginesy bezpieczne i kadr profilu">
+        <Grid size={14} /> <span className="hide-sm">Linie pomocnicze</span>
+      </button>
+      {mobile && (
+        <>
+          {/* the per-thumbnail buttons are hidden on a phone, so slide actions live here */}
+          <button className="btn sm" title="Duplikuj" onClick={() => s.duplicateSlide(s.current)}>
+            <Copy size={14} />
+          </button>
+          <button className="btn sm danger" title="Usuń" onClick={() => s.deleteSlide(s.current)}>
+            <Trash size={14} />
+          </button>
+        </>
+      )}
+    </div>
+  )
+
   return (
-    <div className="app">
+    <div className={`app ${mobile ? 'is-mobile' : ''}`}>
       <header className="header">
         <div className="logo">
           <svg className="logo-mark" viewBox="0 0 64 64">
             <rect x="12" y="10" width="30" height="38" rx="6" fill="none" stroke="#e8707a" strokeWidth="4" />
             <rect x="22" y="17" width="30" height="38" rx="6" fill="#e8707a" />
           </svg>
-          <span>Post<em>ify</em></span>
+          <span className="hide-sm">
+            Post<em>ify</em>
+          </span>
         </div>
-        <div className="seg">
-          <button className={aiMode ? 'on red' : ''} onClick={() => s.set({ leftTab: 'ai' })}>
-            <Sparkles size={15} /> Tryb AI
-          </button>
-          <button className={!aiMode ? 'on red' : ''} onClick={() => s.set({ leftTab: s.leftTab === 'ai' ? 'gallery' : s.leftTab })}>
-            <Hand size={15} /> Tryb ręczny
-          </button>
-        </div>
+        {!mobile && (
+          <div className="seg">
+            <button className={aiMode ? 'on red' : ''} onClick={() => s.set({ leftTab: 'ai' })}>
+              <Sparkles size={15} /> Tryb AI
+            </button>
+            <button className={!aiMode ? 'on red' : ''} onClick={() => s.set({ leftTab: s.leftTab === 'ai' ? 'gallery' : s.leftTab })}>
+              <Hand size={15} /> Tryb ręczny
+            </button>
+          </div>
+        )}
         <input className="project-name" value={s.project.name} onChange={(e) => s.mutate((p) => (p.name = e.target.value), 'rename')} title="Nazwa projektu" />
+        {story && <span className="badge-fmt">9:16</span>}
         <div className="grow" />
-        <select className="select" style={{ width: 190 }} value={preset.id} onChange={(e) => s.mutate((p) => (p.presetId = e.target.value))} title="Preset stylu dla całej karuzeli">
-          {allPresets(s.customPresets).map((p) => (
-            <option key={p.id} value={p.id}>
-              Styl: {p.name}
-            </option>
-          ))}
-        </select>
+        {!mobile && (
+          <select className="select" style={{ width: 190 }} value={preset.id} onChange={(e) => s.mutate((p) => (p.presetId = e.target.value))} title="Preset stylu">
+            {allPresets(s.customPresets).map((p) => (
+              <option key={p.id} value={p.id}>
+                Styl: {p.name}
+              </option>
+            ))}
+          </select>
+        )}
         <button className="btn ghost icon" title="Cofnij (Ctrl+Z)" disabled={!s.past.length} onClick={s.undo}>
           <Undo />
         </button>
-        <button className="btn ghost icon" title="Ponów (Ctrl+Y)" disabled={!s.future.length} onClick={s.redo}>
+        <button className="btn ghost icon hide-sm" title="Ponów (Ctrl+Y)" disabled={!s.future.length} onClick={s.redo}>
           <Redo />
         </button>
-        <button className="btn ghost" onClick={() => s.set({ modal: 'projects' })}>
-          <Folder /> Projekty
-        </button>
-        <button className="btn ghost" onClick={() => s.set({ modal: 'presets' })}>
-          <Palette /> Presety
-        </button>
+        {!mobile && (
+          <>
+            <button className="btn ghost" onClick={() => s.set({ modal: 'projects' })}>
+              <Folder /> Projekty
+            </button>
+            <button className="btn ghost" onClick={() => s.set({ modal: 'presets' })}>
+              <Palette /> Presety
+            </button>
+          </>
+        )}
         <button
           className={`btn ghost account-btn ${s.sync}`}
           onClick={() => s.set({ modal: 'account' })}
@@ -142,70 +213,135 @@ export default function App() {
           }
         >
           <span className="avatar">{s.account ? s.account.email[0].toUpperCase() : '?'}</span>
-          {s.account ? (s.sync === 'syncing' ? 'Sync…' : s.sync === 'error' ? 'Błąd sync' : 'Konto') : 'Zaloguj'}
+          <span className="hide-sm">{s.account ? (s.sync === 'syncing' ? 'Sync…' : s.sync === 'error' ? 'Błąd sync' : 'Konto') : 'Zaloguj'}</span>
         </button>
-        <button className="btn ghost icon" title="Ustawienia (klucz API)" onClick={() => s.set({ modal: 'settings' })}>
-          <Gear />
-        </button>
+        {mobile ? (
+          <button className="btn ghost icon" onClick={() => setMenu((v) => !v)} title="Więcej">
+            ⋯
+          </button>
+        ) : (
+          <button className="btn ghost icon" title="Ustawienia (klucz API)" onClick={() => s.set({ modal: 'settings' })}>
+            <Gear />
+          </button>
+        )}
         <button className="btn primary" onClick={doExport} disabled={!!progress}>
-          <Download /> Eksport ZIP
+          <Download /> <span className="hide-sm">Eksport ZIP</span>
         </button>
       </header>
 
-      <div className="body">
-        <aside className="left">
-          {aiMode ? (
-            <AIPanel />
-          ) : (
-            <>
-              <div className="tabs">
-                <button className={s.leftTab === 'gallery' ? 'on' : ''} onClick={() => s.set({ leftTab: 'gallery' })}>
-                  <ImageIcon size={15} /> Galeria
-                </button>
-                <button className={s.leftTab === 'layouts' ? 'on' : ''} onClick={() => s.set({ leftTab: 'layouts' })}>
-                  <Layout size={15} /> Układy
+      {mobile && menu && (
+        <div className="menu-sheet" onClick={() => setMenu(false)}>
+          <button className="btn ghost" onClick={() => s.set({ modal: 'projects' })}>
+            <Folder /> Projekty
+          </button>
+          <button className="btn ghost" onClick={() => s.set({ modal: 'presets' })}>
+            <Palette /> Presety
+          </button>
+          <button className="btn ghost" onClick={() => s.set({ modal: 'settings' })}>
+            <Gear /> Ustawienia
+          </button>
+          <button className="btn ghost" onClick={() => rerollSlides(s.project.slides.map((_, i) => i))}>
+            🎲 Losuj wszystkie układy
+          </button>
+          <select className="select" value={preset.id} onChange={(e) => s.mutate((p) => (p.presetId = e.target.value))}>
+            {allPresets(s.customPresets).map((p) => (
+              <option key={p.id} value={p.id}>
+                Styl: {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {mobile ? (
+        <div className="body mobile">
+          <main className="center">
+            {toolbar}
+            <Canvas />
+            <SlideStrip />
+          </main>
+
+          {sheet && (
+            <div className="sheet">
+              <div className="sheet-head">
+                <b>
+                  {{ ai: 'AI', gallery: 'Galeria', layouts: 'Układy', stories: 'Relacje', edit: 'Edycja', tips: 'Wskazówki' }[sheet]}
+                </b>
+                <button className="btn ghost icon" onClick={() => setSheet(null)}>
+                  <X />
                 </button>
               </div>
-              <div className="panel-scroll">{s.leftTab === 'layouts' ? <LayoutsPanel /> : <Gallery />}</div>
-            </>
+              <div className="sheet-body">{panelFor(sheet)}</div>
+            </div>
           )}
-        </aside>
 
-        <main className="center">
-          <div className="canvas-toolbar">
-            <span className="small muted">
-              Slajd <b style={{ color: 'var(--text)' }}>{s.current + 1}</b> / {s.project.slides.length} · 1080 × 1350 (4:5)
-            </span>
-            <div className="grow" style={{ flex: 1 }} />
-            <button className="btn sm" onClick={() => rerollSlides([s.current])} title="Nowy losowy układ tego slajdu — tekst i zdjęcia zostają (Ctrl+Z cofa)">
-              🎲 Losuj układ
-            </button>
-            <button className="btn sm" onClick={() => rerollSlides(s.project.slides.map((_, i) => i))} title="Nowy losowy układ wszystkich slajdów">
-              Losuj wszystkie
-            </button>
-            <button className={`btn sm ${s.showTips ? 'active' : ''}`} onClick={() => s.set({ showTips: !s.showTips })} title="Pokaż, gdzie tło jest spokojne, a gdzie ruchliwe">
-              <Bulb size={14} /> Strefy tekstu
-            </button>
-            <button className={`btn sm ${s.showGuides ? 'active' : ''}`} onClick={() => s.set({ showGuides: !s.showGuides })} title="Marginesy bezpieczeństwa i kadr siatki profilu 3:4">
-              <Grid size={14} /> Linie pomocnicze
-            </button>
-          </div>
-          <Canvas />
-          <SlideStrip />
-        </main>
+          <nav className="tabbar">
+            {(
+              [
+                ['ai', 'AI', <Sparkles size={18} key="a" />],
+                ['gallery', 'Galeria', <ImageIcon size={18} key="g" />],
+                ['layouts', 'Układy', <Layout size={18} key="l" />],
+                ['stories', 'Relacje', <Story size={18} key="s" />],
+                ['edit', 'Edycja', <Type size={18} key="e" />],
+                ['tips', 'Wskazówki', <Bulb size={18} key="t" />],
+              ] as [Sheet, string, React.ReactNode][]
+            ).map(([k, label, icon]) => (
+              <button
+                key={k}
+                className={sheet === k ? 'on' : ''}
+                onClick={() => {
+                  setSheet(sheet === k ? null : k)
+                  if (k === 'ai' || k === 'gallery' || k === 'layouts' || k === 'stories') s.set({ leftTab: k })
+                }}
+              >
+                {icon}
+                <span>{label}</span>
+              </button>
+            ))}
+          </nav>
+        </div>
+      ) : (
+        <div className="body">
+          <aside className="left">
+            {aiMode ? (
+              <AIPanel />
+            ) : (
+              <>
+                <div className="tabs">
+                  <button className={s.leftTab === 'gallery' ? 'on' : ''} onClick={() => s.set({ leftTab: 'gallery' })}>
+                    <ImageIcon size={15} /> Galeria
+                  </button>
+                  <button className={s.leftTab === 'layouts' ? 'on' : ''} onClick={() => s.set({ leftTab: 'layouts' })}>
+                    <Layout size={15} /> Układy
+                  </button>
+                  <button className={s.leftTab === 'stories' ? 'on' : ''} onClick={() => s.set({ leftTab: 'stories' })}>
+                    <Story size={15} /> Relacje
+                  </button>
+                </div>
+                <div className="panel-scroll">{s.leftTab === 'layouts' ? <LayoutsPanel /> : s.leftTab === 'stories' ? <StoriesPanel /> : <Gallery />}</div>
+              </>
+            )}
+          </aside>
 
-        <aside className="right">
-          <div className="tabs">
-            <button className={rightTab === 'edit' ? 'on' : ''} onClick={() => setRightTab('edit')}>
-              Edycja
-            </button>
-            <button className={rightTab === 'tips' ? 'on' : ''} onClick={() => setRightTab('tips')}>
-              <Bulb size={14} /> Wskazówki
-            </button>
-          </div>
-          <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>{rightTab === 'edit' ? <Inspector /> : <TipsPanel />}</div>
-        </aside>
-      </div>
+          <main className="center">
+            {toolbar}
+            <Canvas />
+            <SlideStrip />
+          </main>
+
+          <aside className="right">
+            <div className="tabs">
+              <button className={rightTab === 'edit' ? 'on' : ''} onClick={() => setRightTab('edit')}>
+                Edycja
+              </button>
+              <button className={rightTab === 'tips' ? 'on' : ''} onClick={() => setRightTab('tips')}>
+                <Bulb size={14} /> Wskazówki
+              </button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>{rightTab === 'edit' ? <Inspector /> : <TipsPanel />}</div>
+          </aside>
+        </div>
+      )}
 
       {s.modal === 'settings' && <SettingsModal />}
       {s.modal === 'projects' && <ProjectsModal />}

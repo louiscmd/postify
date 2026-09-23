@@ -5,7 +5,8 @@ import { aiErrorMessage, generateCarousel, type AiCarousel } from '../lib/ai'
 import { analyzeSlot } from '../lib/analyze'
 import { slideAnalyses } from '../lib/reroll'
 import { fitSlots } from '../lib/slot'
-import { buildSlide } from '../presets/templates'
+import { buildSlide, templateById } from '../presets/templates'
+import { STORY_TYPES, storyTypeById } from '../presets/stories'
 import { allPresets, usePreset, useStore } from '../store'
 import type { GalleryImage, Preset, Role, Slide } from '../types'
 import { W, H } from '../types'
@@ -35,14 +36,16 @@ const SUGGESTIONS = [
 const MAX_IMAGES = 20
 
 /** AI content → slides arranged by the layout engine (random, guided by each photo + the AI's zone hint). */
-export async function slidesFromAi(res: AiCarousel, preset: Preset, images: Record<string, GalleryImage>): Promise<Slide[]> {
+export async function slidesFromAi(res: AiCarousel, preset: Preset, images: Record<string, GalleryImage>, frameH = 1350): Promise<Slide[]> {
   return Promise.all(
     res.slides.map(async (s) => {
-      const draft = buildSlide(s.role, { preset, imageIds: s.imageIds, fields: s.fields })
-      fitSlots(draft.slots, images, draft.layout === 'split' ? 675 : 1350)
+      const tpl = (s.structure && templateById(s.structure)) || s.role
+      const opts = { preset, imageIds: s.imageIds, fields: s.fields, frameH }
+      const draft = buildSlide(tpl, opts)
+      fitSlots(draft.slots, images, draft.layout === 'split' ? frameH / 2 : frameH)
       const analyses = await slideAnalyses(draft, images)
-      const out = buildSlide(s.role, { preset, imageIds: s.imageIds, fields: s.fields, analyses, hint: s.zone })
-      fitSlots(out.slots, images, out.layout === 'split' ? 675 : 1350)
+      const out = buildSlide(tpl, { ...opts, analyses, hint: s.zone })
+      fitSlots(out.slots, images, out.layout === 'split' ? frameH / 2 : frameH)
       return out
     }),
   )
@@ -58,6 +61,10 @@ export function AIPanel() {
   const images = useStore((s) => s.images)
   const aiSelection = useStore((s) => s.aiSelection)
   const currentProjectId = useStore((s) => s.project.id)
+  const format = useStore((s) => s.project.format) ?? 'post'
+  const storyType = useStore((s) => s.project.storyType)
+  const isStory = format === 'story'
+  const type = storyTypeById(storyType)
   const [prompt, setPrompt] = useState('')
   const [count, setCount] = useState<'auto' | number>('auto')
   const [showPick, setShowPick] = useState(false)
@@ -93,12 +100,14 @@ export function AIPanel() {
         model: settings.model,
         preset,
         prompt: q,
-        slideCount: count,
+        slideCount: isStory ? (type ? type.frames.length : count) : count,
         images: withStats,
         history: baseHistory,
+        format,
+        storyType,
       })
       useChat.setState({ stage: 'Układam slajdy…' })
-      const slides = await slidesFromAi(result, preset, st().imageMap)
+      const slides = await slidesFromAi(result, preset, st().imageMap, isStory ? 1920 : 1350)
       if (!slides.length) throw new Error('AI nie zwróciło żadnych slajdów. Spróbuj inaczej sformułować prośbę.')
       let pid = projectId
       if (revising) {
@@ -107,7 +116,7 @@ export function AIPanel() {
         })
         useStore.setState({ current: 0, selEl: null })
       } else {
-        st().newProject(result.title || q.slice(0, 40), preset.id, slides)
+        st().newProject(result.title || q.slice(0, 40), preset.id, slides, format, storyType)
         pid = st().project.id
       }
       const lines = result.slides.map((s, i) => `${i + 1}. ${ROLE_NAMES[s.role]} — ${s.purpose}`)
@@ -141,16 +150,36 @@ export function AIPanel() {
           </div>
         </div>
 
-        <div className="field">
-          <span className="label">Liczba slajdów</span>
-          <div className="seg full">
-            {(['auto', 3, 5, 7, 10] as const).map((c) => (
-              <button key={c} className={count === c ? 'on red' : ''} onClick={() => setCount(c)}>
-                {c === 'auto' ? 'Auto' : c}
-              </button>
-            ))}
+        {isStory ? (
+          <div className="field">
+            <span className="label">Typ relacji</span>
+            <select className="select" value={storyType ?? ''} onChange={(e) => st().newStory(e.target.value)}>
+              {STORY_TYPES.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name} — {t.cadence}
+                </option>
+              ))}
+            </select>
+            {type && (
+              <div className="tiny dim" style={{ marginTop: 6 }}>
+                <b>Technika:</b> {type.technique}
+                <br />
+                {type.frames.length} klatek · {type.purpose}
+              </div>
+            )}
           </div>
-        </div>
+        ) : (
+          <div className="field">
+            <span className="label">Liczba slajdów</span>
+            <div className="seg full">
+              {(['auto', 3, 5, 7, 10] as const).map((c) => (
+                <button key={c} className={count === c ? 'on red' : ''} onClick={() => setCount(c)}>
+                  {c === 'auto' ? 'Auto' : c}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="field">
           <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -173,7 +202,15 @@ export function AIPanel() {
           {msgs.length === 0 && (
             <>
               <div className="msg bot">
-                Cześć! Opisz, o czym ma być post, a zaprojektuję całą karuzelę w stylu <b>{preset.name}</b>: dobiorę zdjęcia z galerii, napiszę teksty i ustawię je w najspokojniejszych miejscach kadru.
+                {isStory ? (
+                  <>
+                    Opisz temat, a napiszę całą sekwencję relacji typu <b>{type?.name ?? 'relacja'}</b> — zgodnie z techniką tego typu i z układem 9:16 omijającym paski Instagrama.
+                  </>
+                ) : (
+                  <>
+                    Cześć! Opisz, o czym ma być post, a zaprojektuję całą karuzelę w stylu <b>{preset.name}</b>: dobiorę zdjęcia z galerii, napiszę teksty i ustawię je w najspokojniejszych miejscach kadru.
+                  </>
+                )}
               </div>
               <div className="chips-suggest">
                 {SUGGESTIONS.map((s) => (
@@ -202,7 +239,7 @@ export function AIPanel() {
         <textarea
           className="textarea"
           rows={3}
-          placeholder={revising ? 'Co zmienić? np. „mocniejszy hook na 1. slajdzie”' : 'Zrób mi post o…'}
+          placeholder={revising ? 'Co zmienić? np. „mocniejszy hook na 1. klatce”' : isStory ? 'O czym ma być ta relacja?' : 'Zrób mi post o…'}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={(e) => {

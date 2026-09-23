@@ -5,7 +5,7 @@ import { SHADOW_LABELS, STYLE_LABELS } from '../presets'
 import { makeChips, makeDoodle, makeInset, makeSlot, makeStack, makeTextBlock } from '../presets/templates'
 import { usePreset, useSlide, useStore } from '../store'
 import type { Block, DoodleEl, ImageEl, StackEl, StyleKey, TextStyle, Zone } from '../types'
-import { H, W } from '../types'
+import { slideH, W } from '../types'
 import { containZoom, MAX_ZOOM, MIN_ZOOM, pixelZoom } from '../lib/slot'
 import { IMAGE_MIME } from './Canvas'
 import { DOODLES, Doodle } from './Doodle'
@@ -471,7 +471,7 @@ function SlideInspector() {
     })
 
   const slots = slide.layout === 'split' ? slide.slots.slice(0, 2) : slide.slots.slice(0, 1)
-  const slotH = slide.layout === 'split' ? H / 2 : H
+  const slotH = slide.layout === 'split' ? slideH(slide) / 2 : slideH(slide)
 
   return (
     <>

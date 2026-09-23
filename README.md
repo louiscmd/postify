@@ -1,6 +1,6 @@
 # Postify
 
-Postify is a web tool for making Instagram carousel posts (4:5, 1080×1350), with a dark, soft-red interface in Polish.
+Postify is a web tool for making Instagram carousel posts (4:5, 1080×1350) and stories (9:16, 1080×1920), with a dark, soft-red interface in Polish. It works on a phone as well as a desktop: on narrow screens the panels become bottom sheets with a tab bar, text fields don't trigger iOS zoom, and photos are dragged with a finger and pinched to zoom.
 
 It has two modes:
 
@@ -10,6 +10,22 @@ It has two modes:
 Photos can be any size, shape or file: JPG, PNG, WEBP, AVIF, GIF, BMP and **HEIC from an iPhone** (converted in the browser). The real format is read from the file's bytes, so a HEIC or TIFF named `.jpg` is handled correctly, and anything unreadable says exactly why. Very large photos are scaled down to fit the editor; a panorama or a very tall shot starts fitted whole inside the frame, everything else fills it. The 4:5 frame is fixed, but the photo slides freely behind it: drag it anywhere, use the wheel to zoom from a tight crop down to the whole photo inside the frame, and the empty edges are filled with a blurred copy of it (or the slide colour). **Wypełnij kadr / Zmieść całość / Skala 1:1 / Wyśrodkuj** are one click away in the right panel.
 
 Export gives you a ZIP of numbered PNGs at 1080×1350, ready to upload.
+
+## Stories (Relacje)
+
+Postify also makes Instagram stories (9:16, 1080×1920), built around the seven-type weekly system:
+
+| Type | Cadence | Technique it builds |
+|---|---|---|
+| **Wartość** | 1–2×/week | annotated screenshot: black callouts around the shot, then the steps to copy |
+| **Dowód** | 2–3×/week | raw DM / result screenshot, one line of context, a wins list |
+| **Q&A** | 1×/week | white question sticker + answer over a photo, bucketed by topic |
+| **Dzień z życia** | 1–2×/month | timestamped frames ending on a quantified result |
+| **Rozkład na części** | 1×/week | the real system on screen with black callouts naming each part |
+| **Lifestyle** | 1–2×/week | photos only, no text at all |
+| **CTA** | < 1×/month | pain frames → personal transition → offer with a reply keyword |
+
+Open **Relacje** in the left panel (or the tab bar on a phone), pick a type and you get its whole frame sequence with the right structures. The AI mode knows each type's purpose and technique and writes the frames for it. The layout engine keeps text clear of Instagram's avatar bar (top 230 px) and reply bar (bottom 260 px), which are drawn as guides on the canvas, and story type runs ~20 % larger since a story is read full-screen.
 
 ## Style presets
 

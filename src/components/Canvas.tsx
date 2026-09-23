@@ -3,7 +3,7 @@ import { useSlideAnalysis } from '../lib/useAnalysis'
 import { clampOffset, coverScale, MAX_ZOOM, MIN_ZOOM, slotRect } from '../lib/slot'
 import { clamp, uid } from '../lib/util'
 import { useSlide, usePreset, useStore } from '../store'
-import { H, W, type El } from '../types'
+import { FORMATS, slideH, W, type El } from '../types'
 import { SlideView } from './SlideView'
 
 export const IMAGE_MIME = 'application/x-postify-image'
@@ -31,6 +31,11 @@ export function Canvas() {
   const [dropOver, setDropOver] = useState(false)
   const [tick, setTick] = useState(0)
   const drag = useRef<Drag | null>(null)
+  const touches = useRef(new Map<number, { x: number; y: number }>())
+  const pinch = useRef<{ dist: number; zoom: number; slot: number } | null>(null)
+  const H = slideH(slide)
+  const story = H > 1600
+  const fmt = FORMATS[story ? 'story' : 'post']
   const analyses = useSlideAnalysis(slide, showTips)
 
   // fit stage into the available area
@@ -39,11 +44,11 @@ export function Canvas() {
     if (!el) return
     const ro = new ResizeObserver(() => {
       const r = el.getBoundingClientRect()
-      setScale(Math.max(0.15, Math.min((r.width - 48) / W, (r.height - 24) / H)))
+      setScale(Math.max(0.1, Math.min((r.width - 48) / W, (r.height - 24) / H)))
     })
     ro.observe(el)
     return () => ro.disconnect()
-  }, [])
+  }, [H])
 
   useEffect(() => {
     document.fonts.ready.then(() => setTick((t) => t + 1))
@@ -104,9 +109,37 @@ export function Canvas() {
       }
     }
     if (drag.current) (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    if (e.pointerType === 'touch') touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  }
+
+  /** Two fingers on the slide zoom the photo behind the frame. */
+  const pinchMove = (e: RPointerEvent) => {
+    touches.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    const pts = [...touches.current.values()]
+    if (pts.length < 2) return false
+    const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y)
+    const mid = { clientX: (pts[0].x + pts[1].x) / 2, clientY: (pts[0].y + pts[1].y) / 2 }
+    const p = toSlide(mid)
+    const slotIdx = slide.layout === 'split' && p.y > H / 2 ? 1 : 0
+    const sl = slide.slots[slotIdx]
+    const img = sl?.imageId ? images[sl.imageId] : undefined
+    if (!img) return true
+    if (!pinch.current || pinch.current.slot !== slotIdx) {
+      pinch.current = { dist, zoom: sl.zoom || 1, slot: slotIdx }
+      drag.current = null
+      return true
+    }
+    const sh = slide.layout === 'split' ? H / 2 : H
+    const next = clamp((pinch.current.zoom * dist) / pinch.current.dist, MIN_ZOOM, MAX_ZOOM)
+    store().updateSlide((x) => (x.slots[slotIdx].zoom = Math.round(next * 1000) / 1000), `pinch-${slide.id}-${slotIdx}`)
+    void sh
+    return true
   }
 
   const onPointerMove = (e: RPointerEvent) => {
+    if (e.pointerType === 'touch' && touches.current.size >= 2) {
+      if (pinchMove(e)) return
+    }
     const d = drag.current
     if (!d) {
       const node = (e.target as HTMLElement).closest<HTMLElement>('[data-el-id]')
@@ -200,9 +233,11 @@ export function Canvas() {
     }, `wheel-${slide.id}-${slotIdx}`)
   }
 
-  const onPointerUp = () => {
+  const onPointerUp = (e?: RPointerEvent) => {
     drag.current = null
     setGuides({ v: [], h: [] })
+    if (e) touches.current.delete(e.pointerId)
+    if (touches.current.size < 2) pinch.current = null
   }
 
   const onDoubleClick = (e: React.MouseEvent) => {
@@ -248,6 +283,7 @@ export function Canvas() {
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
         onPointerLeave={() => setHoverRect(null)}
         onWheel={onWheel}
         onDoubleClick={onDoubleClick}
@@ -259,12 +295,24 @@ export function Canvas() {
           <SlideView slide={slide} preset={preset} images={images} showHint />
         </div>
 
-        {showTips && <TipsOverlay analyses={analyses} layout={slide.layout} scale={scale} />}
+        {showTips && <TipsOverlay analyses={analyses} layout={slide.layout} scale={scale} frameH={H} />}
 
         {showGuides && (
           <>
-            <div className="safe" style={{ left: 60 * scale, top: 60 * scale, width: (W - 120) * scale, height: (H - 120) * scale }} title="Bezpieczny margines" />
-            <div className="safe" style={{ left: 33.75 * scale, top: 0, width: (W - 67.5) * scale, height: sh, borderColor: 'rgba(95,208,255,0.28)', borderTop: 0, borderBottom: 0 }} title="Kadr siatki profilu 3:4" />
+            <div
+              className="safe"
+              style={{ left: 60 * scale, top: fmt.safeTop * scale, width: (W - 120) * scale, height: (H - fmt.safeTop - fmt.safeBottom) * scale }}
+              title={story ? 'Bezpieczny obszar relacji — poza nim zasłania UI Instagrama' : 'Bezpieczny margines'}
+            />
+            {story ? (
+              <>
+                {/* Instagram's own UI sits in these bands on a story */}
+                <div className="ui-band" style={{ left: 0, top: 0, width: sw, height: fmt.safeTop * scale }} title="Awatar i nazwa profilu" />
+                <div className="ui-band" style={{ left: 0, top: sh - fmt.safeBottom * scale, width: sw, height: fmt.safeBottom * scale }} title="Pasek odpowiedzi" />
+              </>
+            ) : (
+              <div className="safe" style={{ left: 33.75 * scale, top: 0, width: (W - 67.5) * scale, height: sh, borderColor: 'rgba(95,208,255,0.28)', borderTop: 0, borderBottom: 0 }} title="Kadr siatki profilu 3:4" />
+            )}
           </>
         )}
         {slide.layout === 'split' && <div className="split-line" style={{ top: sh / 2 }} />}
@@ -295,8 +343,8 @@ export function Canvas() {
   )
 }
 
-function TipsOverlay({ analyses, layout, scale }: { analyses: ReturnType<typeof useSlideAnalysis>; layout: 'single' | 'split'; scale: number }) {
-  const slotH = layout === 'split' ? H / 2 : H
+function TipsOverlay({ analyses, layout, scale, frameH }: { analyses: ReturnType<typeof useSlideAnalysis>; layout: 'single' | 'split'; scale: number; frameH: number }) {
+  const slotH = layout === 'split' ? frameH / 2 : frameH
   const zoneY = { top: [0.03, 0.32], middle: [0.36, 0.64], bottom: [0.68, 0.97] } as const
   return (
     <>

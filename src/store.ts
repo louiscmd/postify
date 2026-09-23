@@ -5,9 +5,10 @@ import { initialZoom } from './lib/slot'
 import { debounce, uid } from './lib/util'
 import { BUILTIN_PRESETS } from './presets'
 import { buildSlide, templateById } from './presets/templates'
-import type { El, GalleryImage, Preset, Project, ProjectMeta, Settings, Slide } from './types'
+import { FORMATS, type El, type FormatKey, type GalleryImage, type Preset, type Project, type ProjectMeta, type Settings, type Slide } from './types'
+import { STORY_TYPES } from './presets/stories'
 
-export type LeftTab = 'ai' | 'gallery' | 'layouts'
+export type LeftTab = 'ai' | 'gallery' | 'layouts' | 'stories'
 export type Modal = null | 'projects' | 'presets' | 'settings' | 'account'
 
 interface State {
@@ -48,7 +49,8 @@ interface State {
   removeImage: (id: string) => void
   toggleAiImage: (id: string) => void
 
-  newProject: (name?: string, presetId?: string, slides?: Slide[]) => void
+  newProject: (name?: string, presetId?: string, slides?: Slide[], format?: FormatKey, storyType?: string) => void
+  newStory: (typeId: string) => void
   openProject: (id: string) => Promise<void>
   deleteProject: (id: string) => Promise<void>
 
@@ -254,17 +256,32 @@ export const useStore = create<State>((set, get) => {
       set({ aiSelection: s.includes(id) ? s.filter((x) => x !== id) : [...s, id] })
     },
 
-    newProject(name, presetId, slides) {
+    newProject(name, presetId, slides, format, storyType) {
       const base = starterProject()
       const p: Project = {
         ...base,
         name: name ?? `Karuzela ${new Date().toLocaleDateString('pl-PL')}`,
         presetId: presetId ?? get().project.presetId,
+        format: format ?? 'post',
+        storyType,
         slides: slides ?? base.slides,
       }
       const projects = [meta(p), ...get().projects]
       set({ project: p, projects, current: 0, selEl: null, selBlock: null, past: [], future: [], lastKey: null, modal: null })
       persist(p, projects)
+    },
+
+    /** Build a whole story sequence from one of the seven schedule types. */
+    newStory(typeId) {
+      const type = STORY_TYPES.find((t) => t.id === typeId)
+      if (!type) return
+      const preset = allPresets(get().customPresets).find((p) => p.id === get().project.presetId) ?? BUILTIN_PRESETS[0]
+      const h = FORMATS.story.h
+      const slides = type.frames.map((fr) =>
+        buildSlide(templateById(fr.structure) ?? 'content', { preset, imageIds: [], fields: fr.fields, frameH: h }),
+      )
+      get().newProject(`Relacja: ${type.name}`, preset.id, slides, 'story', type.id)
+      get().notify(`${type.name} — ${slides.length} klatek. ${type.cadence}.`)
     },
 
     async openProject(id) {

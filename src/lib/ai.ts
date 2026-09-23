@@ -1,8 +1,9 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { BetaContentBlockParam, BetaMessageParam } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { STYLE_LABELS } from '../presets'
-import { FIELD_KEYS, type Fields } from '../presets/templates'
-import type { GalleryImage, Preset, Role, Zone } from '../types'
+import { FIELD_KEYS, templatesFor, type Fields } from '../presets/templates'
+import { storyTypeById } from '../presets/stories'
+import type { FormatKey, GalleryImage, Preset, Role, Zone } from '../types'
 import { describe, type Analysis } from './analyze'
 import { cleanApiKey, loadImg } from './util'
 
@@ -15,6 +16,7 @@ export const MODELS = [
 export interface AiSlide {
   purpose: string
   role: Role
+  structure?: string
   imageIds: string[]
   zone: Zone | 'auto'
   fields: Fields
@@ -44,7 +46,7 @@ export async function imageToBase64(img: GalleryImage, edge = 768) {
 
 const ROLES: Role[] = ['cover', 'content', 'list', 'statement', 'split', 'cta']
 
-const schema = {
+const schema = (structureIds: string[]) => ({
   type: 'object',
   additionalProperties: false,
   required: ['title', 'slides'],
@@ -55,10 +57,11 @@ const schema = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['purpose', 'role', 'imageIds', 'zone', 'fields'],
+        required: ['purpose', 'role', 'structure', 'imageIds', 'zone', 'fields'],
         properties: {
           purpose: { type: 'string', description: "Which part of the user's request this slide delivers (one sentence, used to check coverage)" },
           role: { type: 'string', enum: ROLES },
+          structure: { type: 'string', enum: structureIds, description: 'Which frame structure to use' },
           imageIds: { type: 'array', items: { type: 'string' } },
           zone: { type: 'string', enum: ['top', 'middle', 'bottom', 'auto'] },
           fields: {
@@ -73,9 +76,50 @@ const schema = {
       },
     },
   },
+})
+
+const structureList = (format: FormatKey) =>
+  templatesFor(format)
+    .map((t) => `- ${t.id} — ${t.name}: ${t.description} (zdjęcia: ${t.images}; pola: ${Object.keys(t.demo).join(', ') || 'brak'})`)
+    .join('\n')
+
+/** Story frames follow the seven-type weekly system; posts follow the carousel rules. */
+const storyPrompt = (preset: Preset, storyType?: string) => {
+  const t = storyTypeById(storyType)
+  return `You write Instagram STORY frames (9:16, 1080×1920) inside the "Postify" editor. You write the CONTENT; the layout engine places it and keeps clear of the top 230 px (avatar bar) and bottom 260 px (reply bar).
+
+VISUAL STYLE — "${preset.name}": ${preset.description}
+
+${
+  t
+    ? `STORY TYPE — ${t.name} (${t.cadence})
+Purpose: ${t.purpose}
+Technique that makes it work: ${t.technique}
+How to write it: ${t.ai}
+Frame plan — follow it in this order, one entry per frame:
+${t.frames.map((fr, i) => `${i + 1}. ${fr.structure} — ${fr.note}`).join('\n')}`
+    : 'Choose the frames that fit the request.'
 }
 
-const systemPrompt = (preset: Preset) => `You write and plan Instagram carousel posts (4:5) inside the "Postify" editor. You decide the CONTENT of each slide; Postify's layout engine then arranges it automatically — positions, sizes and alignment are randomised within the visual style and adapt to however much text you write.
+FRAME STRUCTURES (the "structure" field):
+${structureList('story')}
+
+STORY FIELDS
+- callouts: short black annotation boxes placed around a screenshot — name exactly what is happening, 2–6 words each
+- timestamp: an hour label like "10:00" for day-in-the-life frames
+- question: the text inside a white sticker (the ask-me prompt, and each question)
+- title / subtitle / body / bullets / caption / keyword: as in posts
+
+RULES
+1. Follow the frame plan and the user's request exactly — one idea per frame.
+2. A story is read in two seconds: short lines, spoken tone, no marketing voice, lowercase is fine.
+3. Write in the language of the request. Speak as a person, never as a company.
+4. Never invent numbers, results or client quotes — leave an obvious placeholder for the user to replace.
+5. imageIds: one per frame; two when the structure shows a screenshot (sv-annotated, sv-raw). Only ids from the list.`
+}
+
+const systemPrompt = (preset: Preset, format: FormatKey, storyType?: string) =>
+  format === 'story' ? storyPrompt(preset, storyType) : `You write and plan Instagram carousel posts (4:5) inside the "Postify" editor. You decide the CONTENT of each slide; Postify's layout engine then arranges it automatically — positions, sizes and alignment are randomised within the visual style and adapt to however much text you write.
 
 VISUAL STYLE — "${preset.name}": ${preset.description}
 Style notes (typography and mood only — ignore any exact positions, the engine handles placement):
@@ -113,6 +157,8 @@ export interface GenerateInput {
   slideCount: number | 'auto'
   images: { img: GalleryImage; analysis?: Analysis }[]
   history: BetaMessageParam[]
+  format?: FormatKey
+  storyType?: string
 }
 
 export async function generateCarousel(inp: GenerateInput): Promise<{ result: AiCarousel; history: BetaMessageParam[] }> {
@@ -144,9 +190,9 @@ export async function generateCarousel(inp: GenerateInput): Promise<{ result: Ai
   const stream = client(inp.apiKey).beta.messages.stream({
     model: inp.model,
     max_tokens: 32000,
-    system: systemPrompt(inp.preset),
+    system: systemPrompt(inp.preset, inp.format ?? 'post', inp.storyType),
     messages,
-    output_config: { format: { type: 'json_schema', schema } },
+    output_config: { format: { type: 'json_schema', schema: schema(templatesFor(inp.format ?? 'post').map((t) => t.id)) } },
     ...fallbackParams(inp.model),
   })
   const msg = await stream.finalMessage()

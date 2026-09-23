@@ -37,3 +37,4 @@ export const Split = (p: P) => <I {...p}><rect x="4" y="3" width="16" height="18
 export const Square = (p: P) => <I {...p}><rect x="4" y="3" width="16" height="18" rx="2" /></I>
 export const Wand = (p: P) => <I {...p}><path d="M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8l1.4 1.4M17.8 6.2l1.4-1.4M12.2 6.2l-1.4-1.4" /><path d="M3 21l9-9" /></I>
 export const Reset = (p: P) => <I {...p}><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /></I>
+export const Story = (p: P) => <I {...p}><rect x="7" y="2" width="10" height="20" rx="3" /><path d="M3 8v8M21 8v8" /></I>

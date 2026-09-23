@@ -1,11 +1,11 @@
 import { arrange, newSeed } from '../presets/layout'
 import { getPreset, useStore } from '../store'
-import type { GalleryImage, Slide } from '../types'
+import { slideH, type GalleryImage, type Slide } from '../types'
 import { analyzeSlot, slotSize, type Analysis } from './analyze'
 
 /** Photo analysis for each background slot of a slide, as currently framed. */
 export async function slideAnalyses(slide: Slide, images: Record<string, GalleryImage>): Promise<(Analysis | null)[]> {
-  const { w, h } = slotSize(slide.layout)
+  const { w, h } = slotSize(slide.layout, slideH(slide))
   const slots = slide.layout === 'split' ? slide.slots.slice(0, 2) : slide.slots.slice(0, 1)
   return Promise.all(slots.map((s) => (s.imageId && images[s.imageId] ? analyzeSlot(images[s.imageId], s, w, h).catch(() => null) : Promise.resolve(null))))
 }

@@ -6,7 +6,7 @@
 import type { Analysis } from '../lib/analyze'
 import { uid } from '../lib/util'
 import type { Block, DoodleEl, FontKey, ImageEl, Preset, Slide, StackEl, TextStyle, Zone } from '../types'
-import { H, W } from '../types'
+import { slideH, W } from '../types'
 
 // ── seeded random ────────────────────────────────────────────
 export type Rand = () => number
@@ -96,6 +96,11 @@ const plain = (s: string) => s.replace(/\*\*|==/g, '')
 const styleOf = (preset: Preset, b: Block): TextStyle => ({ ...preset.styles[b.styleKey], ...b.overrides })
 
 export const estBlock = (b: Block, st: TextStyle, width: number) => {
+  const pad = st.boxBg ? 2 * (st.boxPadY ?? 14) : 0
+  return estBlockInner(b, st, width - (st.boxBg ? 2 * (st.boxPadX ?? 22) : 0)) + pad
+}
+
+const estBlockInner = (b: Block, st: TextStyle, width: number) => {
   if (b.kind === 'chips') {
     let rows = 1
     let x = 0
@@ -134,7 +139,7 @@ const fitHead = (text: string, base: number, width: number, cw: number, maxLines
 const HEADLINE = new Set(['title', 'keyword'])
 
 /** Sizes headlines to their box, then shrinks everything until the stack fits `maxH`. */
-function autosize(el: StackEl, preset: Preset, r: Rand, maxH: number) {
+function autosize(el: StackEl, preset: Preset, r: Rand, maxH: number, fmt = 1) {
   const R = RULES[preset.family]
   const scale = range(r, ...R.titleScale)
   for (const b of el.blocks) {
@@ -143,7 +148,10 @@ function autosize(el: StackEl, preset: Preset, r: Rand, maxH: number) {
     if (b.kind === 'text' && HEADLINE.has(b.styleKey)) {
       const words = plain(b.text).split(/\s+/).filter(Boolean).length
       const st = styleOf(preset, b)
-      b.overrides.size = fitHead(b.text, baseSt.size * scale, el.w, charW(st), words <= 3 ? 2 : 3, Math.round(baseSt.size * 0.42))
+      b.overrides.size = fitHead(b.text, baseSt.size * scale * fmt, el.w, charW(st), words <= 3 ? 2 : 3, Math.round(baseSt.size * 0.42))
+    } else if (fmt !== 1) {
+      // a story is read full-screen, so all of its type runs larger than a post's
+      b.overrides.size = Math.round(baseSt.size * fmt)
     }
   }
   for (let guard = 0; guard < 40 && estStack(el, preset) > maxH; guard++) {
@@ -199,6 +207,12 @@ export interface ArrangeOpts {
 
 /** Positions every element of `slide` in place. */
 export function arrange(slide: Slide, preset: Preset, analyses: (Analysis | null | undefined)[], seed: number, opts: ArrangeOpts = {}) {
+  const H = slideH(slide) // 1350 for a post, 1920 for a story
+  const story = H > 1600
+  const fmt = story ? 1.22 : 1 // story type is read full-screen
+  // on a story, Instagram's avatar bar and reply bar eat the top and bottom
+  const padTop = story ? 250 : 64
+  const padBottom = story ? 300 : 90
   const r = rng(seed)
   const R = RULES[preset.family]
   slide.seed = seed
@@ -222,7 +236,7 @@ export function arrange(slide: Slide, preset: Preset, analyses: (Analysis | null
       el.x = align === 'left' ? m : align === 'right' ? W - m - w : Math.round((W - w) / 2)
       el.y = Math.round(i * (H / 2) + rel * (H / 2))
       setAlign(el, align)
-      autosize(el, preset, r, (H / 2) * 0.55)
+      autosize(el, preset, r, (H / 2) * 0.55, fmt)
       const zs = a?.zones[z]
       applyTone(el, preset, zs ? zs.lum : 0.2, zs?.busy)
       // busy/bright half with light text: a soft band behind the line keeps it readable
@@ -236,9 +250,10 @@ export function arrange(slide: Slide, preset: Preset, analyses: (Analysis | null
   }
 
   // ── single photo ──
-  const main = stacks.find((s) => s.role === 'main') ?? stacks.find((s) => s.role !== 'caption') ?? stacks[0]
+  const callouts = stacks.filter((s) => s.role === 'callout')
+  const main = stacks.find((s) => s.role === 'main') ?? stacks.find((s) => s.role !== 'caption' && s.role !== 'callout') ?? undefined
   const caption = stacks.find((s) => s !== main && s.role === 'caption')
-  const extras = stacks.filter((s) => s !== main && s !== caption)
+  const extras = stacks.filter((s) => s !== main && s !== caption && s.role !== 'callout')
   const a = analyses[0]
   const role = slide.role ?? 'content'
   const inset = insets[0]
@@ -257,7 +272,7 @@ export function arrange(slide: Slide, preset: Preset, analyses: (Analysis | null
       inset.h = Math.round(inset.w * range(r, 1.25, 1.6))
       inset.radius = Math.round(range(r, ...R.insetRadius))
       inset.rotation = r() < 0.25 ? Math.round(range(r, -3, 3)) : 0
-      inset.y = zone === 'bottom' ? Math.round(H - inset.h - range(r, 80, 150)) : Math.round(range(r, 56, 150))
+      inset.y = zone === 'bottom' ? Math.round(H - inset.h - range(r, padBottom, padBottom + 70)) : Math.round(range(r, padTop, padTop + 90))
       inset.x = side === 'left' ? m : W - m - inset.w
       main.w = W - 2 * m - inset.w - 44
       main.x = side === 'left' ? inset.x + inset.w + 44 : m
@@ -273,16 +288,16 @@ export function arrange(slide: Slide, preset: Preset, analyses: (Analysis | null
       const wr = words > 22 ? R.widthLong : R.width
       main.w = Math.min(W - 2 * m, Math.round(W * range(r, ...wr)))
       main.x = align === 'left' ? m : align === 'right' ? W - m - main.w : Math.round((W - main.w) / 2)
-      if (zone === 'top') Object.assign(main, { anchor: 'top', y: Math.round(range(r, 64, 170)) })
-      else if (zone === 'bottom') Object.assign(main, { anchor: 'bottom', y: Math.round(range(r, 1160, 1265)) })
-      else Object.assign(main, { anchor: 'center', y: Math.round(range(r, 560, caption ? 700 : 790)) })
+      if (zone === 'top') Object.assign(main, { anchor: 'top', y: Math.round(range(r, padTop, padTop + 110)) })
+      else if (zone === 'bottom') Object.assign(main, { anchor: 'bottom', y: Math.round(range(r, H - padBottom - 110, H - padBottom)) })
+      else Object.assign(main, { anchor: 'center', y: Math.round(range(r, H * 0.42, H * (caption ? 0.52 : 0.58))) })
       // long text may take more of the slide before it starts shrinking (readability > photo space)
       maxH = (zone === 'middle' ? H * 0.56 : H * 0.46) * (words > 40 ? 1.35 : 1)
-      if (words > 40 && zone !== 'middle') main.y = zone === 'top' ? Math.min(main.y, 110) : Math.max(main.y, 1230)
+      if (words > 40 && zone !== 'middle') main.y = zone === 'top' ? Math.min(main.y, padTop + 46) : Math.max(main.y, H - padBottom - 20)
     }
     main.rotation = 0
     setAlign(main, align)
-    autosize(main, preset, r, maxH)
+    autosize(main, preset, r, maxH, fmt)
 
     // readability: gradient behind the text zone when the photo there is bright or busy
     const zs = a?.zones[zone]
@@ -336,19 +351,56 @@ export function arrange(slide: Slide, preset: Preset, analyses: (Analysis | null
     caption.w = Math.round(W * range(r, 0.78, 0.9))
     caption.x = Math.round((W - caption.w) / 2)
     caption.anchor = 'bottom'
-    caption.y = Math.round(range(r, 1195, 1262))
+    caption.y = Math.round(range(r, H - padBottom - 70, H - padBottom))
     caption.rotation = 0
     setAlign(caption, pick(r, ['center', 'center', 'left'] as const))
-    autosize(caption, preset, r, 320)
+    autosize(caption, preset, r, 320 * fmt, fmt)
     applyTone(caption, preset, 0)
     slide.overlay.bottom = Math.max(slide.overlay.bottom, range(r, 0.72, 0.9))
+  }
+
+  // a frame whose whole point is the screenshot (raw proof): show it big and centred
+  if (inset && !callouts.length && !main) {
+    inset.w = Math.round(W * range(r, 0.74, 0.92))
+    inset.h = Math.round(Math.min(H - padTop - padBottom - (caption ? 220 : 60), inset.w * range(r, 1.0, 1.45)))
+    inset.x = Math.round((W - inset.w) / 2)
+    inset.y = Math.round(padTop + range(r, 30, 120))
+    inset.rotation = r() < 0.35 ? Math.round(range(r, -2, 2)) : 0
+  }
+
+  // annotated screenshot: the photo is the hero, the black boxes sit around it
+  if (callouts.length) {
+    let top = padTop + 120
+    let bottom = H - padBottom - 120
+    if (inset) {
+      inset.w = Math.round(W * range(r, 0.72, 0.9))
+      inset.h = Math.round(Math.min(H - padTop - padBottom - 180, inset.w * range(r, 1.0, 1.5)))
+      inset.x = Math.round((W - inset.w) / 2)
+      inset.y = Math.round(padTop + range(r, 40, 130))
+      inset.rotation = r() < 0.4 ? Math.round(range(r, -2, 2)) : 0
+      inset.radius = Math.round(range(r, 4, 18))
+      top = inset.y + 40
+      bottom = Math.min(H - padBottom - 60, inset.y + inset.h + 40)
+    }
+    const step = (bottom - top) / Math.max(1, callouts.length)
+    callouts.forEach((el, i) => {
+      el.w = Math.round(range(r, 420, 560))
+      const left = i % 2 === 0
+      el.x = Math.round(left ? range(r, 36, 80) : W - el.w - range(r, 36, 80))
+      el.anchor = 'top'
+      el.y = Math.round(top + step * i + range(r, 0, step * 0.35))
+      el.rotation = Math.round(range(r, -2.5, 2.5))
+      setAlign(el, 'left')
+      autosize(el, preset, r, 280 * fmt, fmt)
+      applyTone(el, preset, 0)
+    })
   }
 
   // manually added groups: stack them in whatever zone the main text isn't using
   extras.forEach((el, i) => {
     el.x = Math.max(m, Math.min(el.x, W - m - el.w))
-    if (zone === 'bottom') Object.assign(el, { anchor: 'top', y: 90 + i * 170 })
-    else Object.assign(el, { anchor: 'bottom', y: (caption ? 1020 : 1240) - i * 170 })
+    if (zone === 'bottom') Object.assign(el, { anchor: 'top', y: padTop + 26 + i * 170 })
+    else Object.assign(el, { anchor: 'bottom', y: H - padBottom - (caption ? 220 : 20) - i * 170 })
   })
   return slide
 }

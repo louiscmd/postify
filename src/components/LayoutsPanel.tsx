@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { newSeed } from '../presets/layout'
 import { slideAnalyses } from '../lib/reroll'
 import { fitSlots } from '../lib/slot'
-import { buildSlide, ROLE_GROUPS, TEMPLATES, type TemplateDef } from '../presets/templates'
+import { buildSlide, ROLE_GROUPS, templatesFor, type TemplateDef } from '../presets/templates'
 import { allPresets, useSlide, usePreset, useStore } from '../store'
 import type { Slide } from '../types'
 import { SlideThumb } from './SlideView'
@@ -16,25 +16,28 @@ export function LayoutsPanel() {
   const st = useStore.getState
   const [roll, setRoll] = useState(() => newSeed())
 
-  const groups = ROLE_GROUPS.map((g) => ({ ...g, items: TEMPLATES.filter((t) => t.role === g.role) })).filter((g) => g.items.length)
+  const format = useStore((s) => s.project.format) ?? 'post'
+  const frameH = format === 'story' ? 1920 : 1350
+  const structures = templatesFor(format)
+  const groups = ROLE_GROUPS.map((g) => ({ ...g, items: structures.filter((t) => t.role === g.role) })).filter((g) => g.items.length)
   const slideImgs = slide.slots.map((s) => s.imageId).filter(Boolean) as string[]
   const idsFor = (t: TemplateDef) => (t.images === 2 ? [slideImgs[0], slideImgs[1] ?? slideImgs[0]].filter(Boolean) : slideImgs.slice(0, 1))
 
   // previews are random arrangements too — the dice re-rolls them
   const previews = useMemo(
-    () => Object.fromEntries(TEMPLATES.map((t, i) => [t.id, buildSlide(t, { preset, imageIds: idsFor(t), fields: t.demo, seed: roll + i * 7919 })])),
+    () => Object.fromEntries(structures.map((t, i) => [t.id, buildSlide(t, { preset, imageIds: idsFor(t), fields: t.demo, seed: roll + i * 7919, frameH })])),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [preset, slideImgs.join(','), roll],
+    [preset, slideImgs.join(','), roll, format],
   )
 
   /** Fresh random arrangement, guided by what's calm in the photo. */
   const make = async (t: TemplateDef): Promise<Slide> => {
     const ids = idsFor(t)
-    const draft = buildSlide(t, { preset, imageIds: ids, fields: t.demo })
-    fitSlots(draft.slots, images, draft.layout === 'split' ? 675 : 1350)
+    const draft = buildSlide(t, { preset, imageIds: ids, fields: t.demo, frameH })
+    fitSlots(draft.slots, images, draft.layout === 'split' ? frameH / 2 : frameH)
     const analyses = await slideAnalyses(draft, images)
-    const out = buildSlide(t, { preset, imageIds: ids, fields: t.demo, analyses })
-    fitSlots(out.slots, images, out.layout === 'split' ? 675 : 1350)
+    const out = buildSlide(t, { preset, imageIds: ids, fields: t.demo, analyses, frameH })
+    fitSlots(out.slots, images, out.layout === 'split' ? frameH / 2 : frameH)
     return out
   }
 

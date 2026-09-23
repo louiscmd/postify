@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { blankSlide } from '../presets/templates'
 import { usePreset, useStore } from '../store'
 import { IMAGE_MIME } from './Canvas'
@@ -12,8 +12,17 @@ export function SlideStrip() {
   const current = useStore((s) => s.current)
   const images = useStore((s) => s.imageMap)
   const preset = usePreset()
+  const frameH = useStore((s) => (s.project.format === 'story' ? 1920 : 1350))
   const st = useStore.getState
   const [over, setOver] = useState<number | null>(null)
+  const [narrow, setNarrow] = useState(() => window.matchMedia('(max-width: 860px)').matches)
+  useEffect(() => {
+    const q = window.matchMedia('(max-width: 860px)')
+    const on = () => setNarrow(q.matches)
+    q.addEventListener('change', on)
+    return () => q.removeEventListener('change', on)
+  }, [])
+  const thumbW = narrow ? 54 : 86
 
   return (
     <div className="strip">
@@ -41,7 +50,7 @@ export function SlideStrip() {
           }}
           title="Przeciągnij, aby zmienić kolejność · upuść zdjęcie, aby ustawić tło"
         >
-          <SlideThumb slide={s} preset={preset} images={images} width={86} />
+          <SlideThumb slide={s} preset={preset} images={images} width={thumbW} />
           <span className="num">{i + 1}</span>
           <div className="sactions" onClick={(e) => e.stopPropagation()}>
             <button title="W lewo" onClick={() => i > 0 && st().moveSlide(i, i - 1)}>
@@ -59,11 +68,12 @@ export function SlideStrip() {
           </div>
         </div>
       ))}
-      <button className="add-slide" title="Dodaj pusty slajd" onClick={() => st().addSlide(blankSlide(), slides.length)}>
+      <button className="add-slide" title="Dodaj pusty slajd" onClick={() => st().addSlide(blankSlide(frameH), slides.length)}>
         <Plus size={22} />
       </button>
       <div className="tiny dim" style={{ marginLeft: 6, maxWidth: 170, flex: 'none' }}>
-        {slides.length} {slides.length === 1 ? 'slajd' : slides.length < 5 ? 'slajdy' : 'slajdów'} · max 20 na Instagramie
+        {slides.length} {frameH > 1600 ? 'klatek' : slides.length === 1 ? 'slajd' : slides.length < 5 ? 'slajdy' : 'slajdów'}
+        {frameH > 1600 ? '' : ' · max 20 na Instagramie'}
       </div>
     </div>
   )

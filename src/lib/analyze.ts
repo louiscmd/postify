@@ -141,4 +141,4 @@ export const describe = (a: Analysis) =>
     .map((z) => `${z}: brightness ${a.zones[z].lum.toFixed(2)}, busy ${a.zones[z].busy.toFixed(2)}`)
     .join('; ') + `; calmest=${a.best}; suggested tone=${a.tone}`
 
-export const slotSize = (layout: 'single' | 'split') => ({ w: W, h: layout === 'split' ? 675 : 1350 })
+export const slotSize = (layout: 'single' | 'split', frameH = 1350) => ({ w: W, h: layout === 'split' ? frameH / 2 : frameH })

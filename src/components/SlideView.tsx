@@ -3,7 +3,7 @@ import { fontStack, snapWeight } from '../fonts'
 import { RichText } from '../lib/markup'
 import { SHADOWS } from '../presets'
 import type { BgSlot, Block, El, GalleryImage, Preset, Slide, TextStyle } from '../types'
-import { H, W } from '../types'
+import { slideH, W } from '../types'
 import { slotRect } from '../lib/slot'
 import { Doodle } from './Doodle'
 
@@ -30,6 +30,15 @@ const alignSelf = (a: Block['selfAlign']) => (a === 'start' ? 'flex-start' : a =
 const BlockView = ({ b, preset }: { b: Block; preset: Preset }) => {
   const st = resolveStyle(preset, b)
   const common: CSSProperties = { ...textCss(st), alignSelf: alignSelf(b.selfAlign), marginTop: b.marginTop }
+  if (st.boxBg) {
+    Object.assign(common, {
+      background: st.boxBg,
+      borderRadius: st.boxRadius ?? 10,
+      padding: `${st.boxPadY ?? 14}px ${st.boxPadX ?? 22}px`,
+      alignSelf: b.selfAlign === 'stretch' ? 'flex-start' : alignSelf(b.selfAlign),
+      textShadow: 'none',
+    })
+  }
   if (b.kind === 'chips') {
     const justify = st.align === 'left' ? 'flex-start' : st.align === 'right' ? 'flex-end' : 'center'
     return (
@@ -204,6 +213,7 @@ export function SlideView({
 }) {
   const o = slide.overlay
   const split = slide.layout === 'split'
+  const H = slideH(slide)
   return (
     <div
       className="slide-root"
@@ -247,7 +257,7 @@ export function SlideView({
 export function SlideThumb({ slide, preset, images, width }: { slide: Slide; preset: Preset; images: Record<string, GalleryImage>; width: number }) {
   const s = width / W
   return (
-    <div style={{ width, height: H * s, overflow: 'hidden', position: 'relative', pointerEvents: 'none' }}>
+    <div style={{ width, height: slideH(slide) * s, overflow: 'hidden', position: 'relative', pointerEvents: 'none' }}>
       <div style={{ transform: `scale(${s})`, transformOrigin: '0 0', position: 'absolute', left: 0, top: 0 }}>
         <SlideView slide={slide} preset={preset} images={images} />
       </div>

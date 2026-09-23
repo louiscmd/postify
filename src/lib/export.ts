@@ -5,7 +5,7 @@ import { getFontEmbedCSS, toJpeg, toPng } from 'html-to-image'
 import JSZip from 'jszip'
 import { SlideView } from '../components/SlideView'
 import type { GalleryImage, Preset, Slide } from '../types'
-import { H, W } from '../types'
+import { slideH, W } from '../types'
 
 /** Mounts slides off-screen at full 1080×1350, waits for fonts + images, then hands each node to `fn`. */
 async function withStage<T>(slides: Slide[], preset: Preset, images: Record<string, GalleryImage>, fn: (nodes: HTMLElement[]) => Promise<T>) {
@@ -23,7 +23,7 @@ async function withStage<T>(slides: Slide[], preset: Preset, images: Record<stri
         createElement(
           'div',
           null,
-          slides.map((s) => createElement('div', { key: s.id, className: 'export-slide', style: { width: W, height: H } }, createElement(SlideView, { slide: s, preset, images }))),
+          slides.map((s) => createElement('div', { key: s.id, className: 'export-slide', style: { width: W, height: slideH(s) } }, createElement(SlideView, { slide: s, preset, images }))),
         ),
       ),
     )
@@ -61,7 +61,7 @@ export async function exportZip(
     const fontEmbedCSS = await getFontEmbedCSS(nodes[0])
     for (let i = 0; i < nodes.length; i++) {
       onProgress(i, nodes.length)
-      const url = await toPng(nodes[i], { width: W, height: H, pixelRatio: 1, fontEmbedCSS, cacheBust: false })
+      const url = await toPng(nodes[i], { width: W, height: slideH(slides[i]), pixelRatio: 1, fontEmbedCSS, cacheBust: false })
       const blob = await (await fetch(url)).blob()
       zip.file(`${String(i + 1).padStart(2, '0')}.png`, blob)
     }
@@ -79,7 +79,7 @@ export async function exportZip(
 /** Small JPEG of one slide (base64, no prefix) — used to ask Claude for layout feedback. */
 export async function slideJpegBase64(slide: Slide, preset: Preset, images: Record<string, GalleryImage>) {
   return withStage([slide], preset, images, async ([node]) => {
-    const url = await toJpeg(node, { width: W, height: H, pixelRatio: 0.6, quality: 0.85 })
+    const url = await toJpeg(node, { width: W, height: slideH(slide), pixelRatio: 0.6, quality: 0.85 })
     return url.split(',')[1]
   })
 }

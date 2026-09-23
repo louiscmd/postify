@@ -24,22 +24,30 @@ export interface Fields {
   note: string
   top: string
   bottom: string
+  /** story extras */
+  callouts: string[]
+  timestamp: string
+  question: string
 }
 
 export type FieldKey = keyof Fields
 
 export const FIELD_KEYS: FieldKey[] = [
   'kicker', 'title', 'subtitle', 'pretitle', 'posttitle', 'number', 'body', 'bullets', 'chips', 'caption', 'keyword', 'note', 'top', 'bottom',
+  'callouts', 'timestamp', 'question',
 ]
 
 export const emptyFields = (): Fields => ({
   kicker: '', title: '', subtitle: '', pretitle: '', posttitle: '', number: '', body: '',
   bullets: [], chips: [], caption: '', keyword: '', note: '', top: '', bottom: '',
+  callouts: [], timestamp: '', question: '',
 })
 
 export interface TemplateDef {
   id: string
   role: Role
+  /** which frame this structure is meant for (default: posts) */
+  formats?: ('post' | 'story')[]
   name: string
   description: string
   images: 1 | 2
@@ -87,7 +95,7 @@ const bulletsText = (b: string[]) => b.filter(Boolean).map((x) => `- ${x.replace
 const hl = (s: string) => (s.includes('==') ? s : `==${s}==`)
 
 // ── compose: content → styled blocks (no positions) ─────────
-export function compose(role: Role, f: Fields, imageIds: string[], preset: Preset, seed: number): Omit<Slide, 'id'> {
+export function compose(role: Role, f: Fields, imageIds: string[], preset: Preset, seed: number, frameH = 1350): Omit<Slide, 'id'> {
   const r = rng(seed ^ 0x9e3779b9)
   const R = RULES[preset.family]
   const story = preset.family === 'story'
@@ -97,11 +105,21 @@ export function compose(role: Role, f: Fields, imageIds: string[], preset: Prese
   if (split) {
     els.push(stack({ role: 'top', blocks: [tb('split', f.top || f.title)] }))
     els.push(stack({ role: 'bottom', blocks: [tb('split', f.bottom || f.body || f.caption)] }))
-    return { layout: 'split', role: 'split', slots: [slot(imageIds[0] ?? null), slot(imageIds[1] ?? imageIds[0] ?? null)], bgColor: '#1d1718', overlay: ov(), elements: els }
+    return { layout: 'split', role: 'split', h: frameH, slots: [slot(imageIds[0] ?? null), slot(imageIds[1] ?? imageIds[0] ?? null)], bgColor: '#1d1718', overlay: ov(), elements: els }
   }
 
   const b: Block[] = []
   const gap = (n: number) => (b.length ? n : 0)
+  // ── story pieces ──
+  if (f.timestamp)
+    b.push(tb('kicker', f.timestamp, { overrides: { boxBg: '#ffffff', color: '#111111', shadow: 'none', boxRadius: 999, boxPadX: 26, boxPadY: 12, size: 44, weight: 700 } }))
+  if (f.question)
+    b.push(
+      tb('caption', f.question, {
+        marginTop: gap(16),
+        overrides: { boxBg: '#ffffff', color: '#111111', shadow: 'none', boxRadius: 28, boxPadX: 30, boxPadY: 24, align: 'center', size: 46 },
+      }),
+    )
   if (f.pretitle) b.push(tb('kicker', f.pretitle, { overrides: { uppercase: true } }))
   if (f.kicker) b.push(tb('kicker', f.kicker, { marginTop: gap(4) }))
   if (f.number) b.push(tb('number', f.number, { marginTop: gap(8) }))
@@ -129,8 +147,16 @@ export function compose(role: Role, f: Fields, imageIds: string[], preset: Prese
   if (b.length) els.push(stack({ role: 'main', blocks: b }))
   if (f.caption && !(role === 'cta' && f.keyword)) els.push(stack({ role: 'caption', blocks: [tb(role === 'cta' || role === 'statement' ? 'cta' : 'caption', f.caption)] }))
   if (imageIds[1]) els.push(inset({ imageId: imageIds[1] }))
+  // annotation boxes travel as their own groups so the engine can spread them around the screenshot
+  for (const c of f.callouts.filter(Boolean))
+    els.push(
+      stack({
+        role: 'callout',
+        blocks: [tb('body', c, { overrides: { boxBg: '#0d0d0d', color: '#ffffff', shadow: 'none', boxRadius: 8, boxPadX: 22, boxPadY: 16, size: 38, lineHeight: 1.25 } })],
+      }),
+    )
 
-  return { layout: 'single', role, slots: [slot(imageIds[0] ?? null)], bgColor: '#1d1718', overlay: ov(), elements: els }
+  return { layout: 'single', role, h: frameH, slots: [slot(imageIds[0] ?? null)], bgColor: '#1d1718', overlay: ov(), elements: els }
 }
 
 export interface BuildOpts {
@@ -140,6 +166,8 @@ export interface BuildOpts {
   analyses?: (Analysis | null | undefined)[]
   seed?: number
   hint?: Zone | 'auto'
+  /** 1350 = post (default), 1920 = story */
+  frameH?: number
 }
 
 /** Content + style + photo → a positioned slide (random arrangement unless a seed is given). */
@@ -147,7 +175,7 @@ export function buildSlide(tpl: TemplateDef | Role, o: BuildOpts): Slide {
   const role = typeof tpl === 'string' ? tpl : tpl.role
   const seed = o.seed ?? newSeed()
   const fields = { ...emptyFields(), ...o.fields }
-  const s: Slide = { id: uid(), template: typeof tpl === 'string' ? undefined : tpl.id, ...compose(role, fields, o.imageIds, o.preset, seed) }
+  const s: Slide = { id: uid(), template: typeof tpl === 'string' ? undefined : tpl.id, ...compose(role, fields, o.imageIds, o.preset, seed, o.frameH ?? 1350) }
   return arrange(s, o.preset, o.analyses ?? [], seed, { hint: o.hint, decorate: true })
 }
 
@@ -171,6 +199,26 @@ export const TEMPLATES: TemplateDef[] = [
   { id: 'cta-inset', role: 'cta', name: 'Teza + wstawka + CTA', description: 'Zdanie, zrzut ekranu i wezwanie na dole.', images: 2, demo: { title: 'Jedno mocne zdanie', note: '(mały dopisek)', caption: 'Wezwanie do działania na dole slajdu' } },
 ]
 
+// ── story structures (9:16) ─────────────────────────────────
+const STORY_TEMPLATES: TemplateDef[] = [
+  { id: 'sv-hook', role: 'cover', formats: ['story'], name: 'Hook', description: 'Nazwij problem odbiorcy w jednej linijce.', images: 1, demo: { title: 'Problem, który rozwiązujesz', subtitle: 'dla kogo to jest' } },
+  { id: 'sv-annotated', role: 'content', formats: ['story'], name: 'Zrzut z dymkami', description: 'Zrzut ekranu + czarne dymki wyjaśniające.', images: 2, demo: { callouts: ['co jest tu nie tak', 'co zrobić zamiast tego', 'efekt tej zmiany'] } },
+  { id: 'sv-steps', role: 'list', formats: ['story'], name: 'Kroki', description: 'Nagłówek + punkty do wykonania.', images: 1, demo: { title: 'Zrób to u siebie:', bullets: ['pierwszy krok', 'drugi krok', 'trzeci krok'] } },
+  { id: 'sv-raw', role: 'statement', formats: ['story'], name: 'Surowy zrzut', description: 'Zrzut DM-a lub wyniku, bez ozdób.', images: 2, demo: { caption: 'wiadomość od klienta' } },
+  { id: 'sv-line', role: 'statement', formats: ['story'], name: 'Jedno zdanie', description: 'Jedna myśl na całym kadrze.', images: 1, demo: { title: 'Jedno zdanie, które niesie całą klatkę' } },
+  { id: 'sv-sticker', role: 'cover', formats: ['story'], name: 'Naklejka z pytaniem', description: 'Biała naklejka „zadaj pytanie” + temat.', images: 1, demo: { kicker: 'Biznes i życie', question: 'Zadaj mi pytanie' } },
+  { id: 'sv-answer', role: 'content', formats: ['story'], name: 'Pytanie + odpowiedź', description: 'Pytanie w naklejce, odpowiedź na zdjęciu.', images: 1, demo: { question: 'Pytanie od obserwującego', body: 'Odpowiedź w dwóch, trzech zdaniach.' } },
+  { id: 'sv-time', role: 'content', formats: ['story'], name: 'Godzina + kadr', description: 'Znacznik godziny i jedna linijka.', images: 1, demo: { timestamp: '10:00', title: 'co się dzieje o tej godzinie' } },
+  { id: 'sv-result', role: 'cover', formats: ['story'], name: 'Wynik dnia', description: 'Policzalny efekt na koniec sekwencji.', images: 1, demo: { title: 'Efekt dnia: konkretna liczba', subtitle: 'bez morałów' } },
+  { id: 'sv-photo', role: 'statement', formats: ['story'], name: 'Samo zdjęcie', description: 'Zero tekstu — lifestyle.', images: 1, demo: {} },
+  { id: 'sv-pain', role: 'statement', formats: ['story'], name: 'Ból odbiorcy', description: 'Jedno zdanie jego słowami.', images: 1, demo: { title: 'content nigdy się nie kończy' } },
+  { id: 'sv-offer', role: 'cta', formats: ['story'], name: 'Oferta + słowo-klucz', description: 'Bezpośrednia oferta i słowo do odpisania.', images: 1, demo: { title: 'Otwieram 3 miejsca.', keyword: 'MARKA', caption: 'Odpisz „MARKA”.' } },
+]
+
+TEMPLATES.push(...STORY_TEMPLATES)
+
+export const templatesFor = (format: 'post' | 'story') => TEMPLATES.filter((t) => (t.formats ?? ['post']).includes(format))
+
 export const templateById = (id: string) => TEMPLATES.find((t) => t.id === id)
 
 /** Groups used to organise structures in the manual editor, in carousel order. */
@@ -183,8 +231,9 @@ export const ROLE_GROUPS: { role: Role; label: string; hint: string }[] = [
   { role: 'cta', label: 'Zakończenie / CTA', hint: 'ostatni slajd' },
 ]
 
-export const blankSlide = (): Slide => ({
+export const blankSlide = (frameH = 1350): Slide => ({
   id: uid(),
+  h: frameH,
   layout: 'single',
   slots: [slot()],
   bgColor: '#1d1718',

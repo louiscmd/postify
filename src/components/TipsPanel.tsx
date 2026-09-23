@@ -7,7 +7,7 @@ import { useSlideAnalysis } from '../lib/useAnalysis'
 import { contrast, parseColor, relLum } from '../lib/util'
 import { usePreset, useSlide, useStore } from '../store'
 import type { StackEl, Zone } from '../types'
-import { H, W } from '../types'
+import { slideH, W, H as POST_H } from '../types'
 import { Bulb, Sparkles } from './Icons'
 import { resolveStyle } from './SlideView'
 
@@ -38,10 +38,12 @@ const measureBlock = (id: string) => {
   return { x: (r.left - s.left) * k, y: (r.top - s.top) * k, w: r.width * k, h: r.height * k }
 }
 
-const ZONE_Y: Record<Zone, Pick<StackEl, 'y' | 'anchor'>> = { top: { y: 130, anchor: 'top' }, middle: { y: 675, anchor: 'center' }, bottom: { y: 1225, anchor: 'bottom' } }
+const zoneY = (z: Zone, h: number): Pick<StackEl, 'y' | 'anchor'> =>
+  z === 'top' ? { y: 130, anchor: 'top' } : z === 'bottom' ? { y: h - 125, anchor: 'bottom' } : { y: h / 2, anchor: 'center' }
 
 export function useTips(analyses: (Analysis | null)[]) {
   const slide = useSlide()
+  const H = slideH(slide)
   const preset = usePreset()
   const current = useStore((s) => s.current)
   const [tips, setTips] = useState<Tip[]>([])
@@ -127,7 +129,7 @@ export function useTips(analyses: (Analysis | null)[]) {
               text: tall
                 ? `${blabel} wchodzi na szczegółowy fragment (być może twarz lub główny obiekt). Skróć tekst albo przyciemnij tło pod nim.`
                 : `${blabel} zasłania szczegółowy fragment (być może twarz lub główny obiekt). Spokojniej jest: ${ZONE_LABEL[a.best]}.`,
-              fix: tall ? gradient : { label: `Przenieś: ${ZONE_LABEL[a.best]}`, run: () => st().updateEl(el.id, (e) => e.type === 'stack' && Object.assign(e, ZONE_Y[a.best])) },
+              fix: tall ? gradient : { label: `Przenieś: ${ZONE_LABEL[a.best]}`, run: () => st().updateEl(el.id, (e) => e.type === 'stack' && Object.assign(e, zoneY(a.best, H))) },
             })
           } else out.push({ level: 'ok', text: `${blabel}: czytelny (kontrast ${ratio.toFixed(1)}:1${busy > 0.5 ? ', cień pomaga na ruchliwym tle' : ', spokojne tło'}).` })
         }
