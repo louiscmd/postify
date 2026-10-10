@@ -5,11 +5,12 @@ import { aiErrorMessage, generateCarousel, type AiCarousel } from '../lib/ai'
 import { analyzeSlot } from '../lib/analyze'
 import { slideAnalyses } from '../lib/reroll'
 import { fitSlots } from '../lib/slot'
+import { plural } from '../lib/util'
 import { buildSlide, templateById } from '../presets/templates'
 import { STORY_TYPES, storyTypeById } from '../presets/stories'
 import { allPresets, usePreset, useStore } from '../store'
-import type { GalleryImage, Preset, Role, Slide } from '../types'
-import { W, H } from '../types'
+import type { FormatKey, GalleryImage, Preset, Role, Slide } from '../types'
+import { FORMATS, W, H } from '../types'
 import { Gallery } from './Gallery'
 import { Send, Sparkles } from './Icons'
 
@@ -29,7 +30,8 @@ const useChat = create<{ msgs: ChatMsg[]; history: BetaMessageParam[]; projectId
 const SUGGESTIONS = [
   'Zrób mi post o porannej rutynie, która daje energię na cały dzień',
   'Karuzela: 5 błędów, które popełnia każdy początkujący fotograf',
-  'Post o tym, jak zaplanować tani weekend w nowym mieście',
+  'Relacja o tym, jak w 10 minut przygotować się do nagrania',
+  'Story: pokaż wiadomość od klienta i opowiedz, co się za nią kryje',
   'Krótka historia: czego nauczył mnie pierwszy rok prowadzenia firmy',
 ]
 
@@ -61,12 +63,13 @@ export function AIPanel() {
   const images = useStore((s) => s.images)
   const aiSelection = useStore((s) => s.aiSelection)
   const currentProjectId = useStore((s) => s.project.id)
-  const format = useStore((s) => s.project.format) ?? 'post'
-  const storyType = useStore((s) => s.project.storyType)
-  const isStory = format === 'story'
-  const type = storyTypeById(storyType)
+  const projectFormat = useStore((s) => s.project.format) ?? 'post'
   const [prompt, setPrompt] = useState('')
   const [count, setCount] = useState<'auto' | number>('auto')
+  // 'auto' lets the request decide; the other two pin it
+  const [want, setWant] = useState<'auto' | FormatKey>('auto')
+  const [wantType, setWantType] = useState('')
+  const type = storyTypeById(wantType)
   const [showPick, setShowPick] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
   const st = useStore.getState
@@ -94,34 +97,56 @@ export function AIPanel() {
       const withStats = baseHistory.length
         ? []
         : await Promise.all(pool.map(async (img) => ({ img, analysis: await analyzeSlot(img, { imageId: img.id, focusX: 50, focusY: 50, zoom: 1 }, W, H).catch(() => undefined) })))
-      useChat.setState({ stage: baseHistory.length ? 'Poprawiam karuzelę…' : `Claude projektuje karuzelę (${pool.length} zdjęć)…` })
+      const pinned = want === 'auto' ? undefined : want
+      useChat.setState({
+        stage: baseHistory.length
+          ? 'Poprawiam…'
+          : pinned
+            ? `Claude projektuje ${pinned === 'story' ? 'relację' : 'karuzelę'} (${pool.length} zdjęć)…`
+            : `Claude czyta prośbę i dobiera format (${pool.length} zdjęć)…`,
+      })
       const { result, history: nextHistory } = await generateCarousel({
         apiKey: settings.apiKey,
         model: settings.model,
         preset,
         prompt: q,
-        slideCount: isStory ? (type ? type.frames.length : count) : count,
+        slideCount: pinned === 'story' && type ? type.frames.length : count,
         images: withStats,
         history: baseHistory,
-        format,
-        storyType,
+        format: pinned,
+        storyType: pinned === 'story' ? wantType || undefined : undefined,
       })
-      useChat.setState({ stage: 'Układam slajdy…' })
-      const slides = await slidesFromAi(result, preset, st().imageMap, isStory ? 1920 : 1350)
+      const fmt: FormatKey = result.format ?? 'post'
+      const story = fmt === 'story'
+      useChat.setState({ stage: story ? 'Układam klatki…' : 'Układam slajdy…' })
+      const slides = await slidesFromAi(result, preset, st().imageMap, FORMATS[fmt].h)
       if (!slides.length) throw new Error('AI nie zwróciło żadnych slajdów. Spróbuj inaczej sformułować prośbę.')
       let pid = projectId
-      if (revising) {
+      // a revision that switches the frame cannot overwrite the old slides — they were arranged for the other canvas
+      const switched = revising && fmt !== projectFormat
+      if (revising && !switched) {
         st().mutate((p) => {
           p.slides = slides
+          p.storyType = result.storyType
         })
         useStore.setState({ current: 0, selEl: null })
       } else {
-        st().newProject(result.title || q.slice(0, 40), preset.id, slides, format, storyType)
+        st().newProject(result.title || q.slice(0, 40), preset.id, slides, fmt, result.storyType)
         pid = st().project.id
       }
+      const named = storyTypeById(result.storyType)
+      const kind = story ? `relacja 9:16${named ? ` — ${named.name}` : ''}` : 'karuzela 4:5'
+      const n = `${slides.length} ${story ? plural(slides.length, 'klatka', 'klatki', 'klatek') : plural(slides.length, 'slajd', 'slajdy', 'slajdów')}`
       const lines = result.slides.map((s, i) => `${i + 1}. ${ROLE_NAMES[s.role]} — ${s.purpose}`)
+      const head = revising ? (switched ? 'Zmieniony format — nowy projekt' : 'Poprawione') : 'Gotowe'
       useChat.setState((c) => ({
-        msgs: [...c.msgs, { role: 'bot', text: `${revising ? 'Poprawione' : 'Gotowe'}: „${result.title}” — ${slides.length} slajdów.\n\n${lines.join('\n')}\n\nMożesz wszystko edytować ręcznie albo napisz, co zmienić (np. „krótsze teksty”, „zamień slajd 3 na listę”).` }],
+        msgs: [
+          ...c.msgs,
+          {
+            role: 'bot',
+            text: `${head}: „${result.title}” — ${kind}, ${n}.\n\n${lines.join('\n')}\n\nMożesz wszystko edytować ręcznie albo napisz, co zmienić (np. „krótsze teksty”, „zamień slajd 3 na listę”, „zrób z tego relację”).`,
+          },
+        ],
         history: nextHistory,
         projectId: pid,
       }))
@@ -150,10 +175,35 @@ export function AIPanel() {
           </div>
         </div>
 
-        {isStory ? (
+        <div className="field">
+          <span className="label">Co mam zrobić</span>
+          <div className="seg full">
+            {(
+              [
+                ['auto', 'Auto'],
+                ['post', 'Post'],
+                ['story', 'Relacja'],
+              ] as const
+            ).map(([k, label]) => (
+              <button key={k} className={want === k ? 'on red' : ''} onClick={() => setWant(k)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="tiny dim" style={{ marginTop: 5 }}>
+            {want === 'auto'
+              ? 'Format poznam z prośby: „zrób post o…”, „relacja o…”. Gdy nie napiszesz, wybiorę sam.'
+              : want === 'story'
+                ? 'Każda prośba zrobi relację 9:16 (1080 × 1920).'
+                : 'Każda prośba zrobi karuzelę 4:5 (1080 × 1350).'}
+          </div>
+        </div>
+
+        {want === 'story' && (
           <div className="field">
             <span className="label">Typ relacji</span>
-            <select className="select" value={storyType ?? ''} onChange={(e) => st().newStory(e.target.value)}>
+            <select className="select" value={wantType} onChange={(e) => setWantType(e.target.value)}>
+              <option value="">Dobierz sam z prośby</option>
               {STORY_TYPES.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.name} — {t.cadence}
@@ -168,9 +218,11 @@ export function AIPanel() {
               </div>
             )}
           </div>
-        ) : (
+        )}
+
+        {!(want === 'story' && type) && (
           <div className="field">
-            <span className="label">Liczba slajdów</span>
+            <span className="label">Liczba slajdów / klatek</span>
             <div className="seg full">
               {(['auto', 3, 5, 7, 10] as const).map((c) => (
                 <button key={c} className={count === c ? 'on red' : ''} onClick={() => setCount(c)}>
@@ -202,13 +254,17 @@ export function AIPanel() {
           {msgs.length === 0 && (
             <>
               <div className="msg bot">
-                {isStory ? (
+                {want === 'story' ? (
                   <>
-                    Opisz temat, a napiszę całą sekwencję relacji typu <b>{type?.name ?? 'relacja'}</b> — zgodnie z techniką tego typu i z układem 9:16 omijającym paski Instagrama.
+                    Opisz temat, a napiszę całą sekwencję relacji{type ? <> typu <b>{type.name}</b></> : ''} — w układzie 9:16, omijającym paski Instagrama.
+                  </>
+                ) : want === 'post' ? (
+                  <>
+                    Opisz, o czym ma być post, a zaprojektuję całą karuzelę 4:5 w stylu <b>{preset.name}</b>: dobiorę zdjęcia z galerii, napiszę teksty i ustawię je w najspokojniejszych miejscach kadru.
                   </>
                 ) : (
                   <>
-                    Cześć! Opisz, o czym ma być post, a zaprojektuję całą karuzelę w stylu <b>{preset.name}</b>: dobiorę zdjęcia z galerii, napiszę teksty i ustawię je w najspokojniejszych miejscach kadru.
+                    Cześć! Napisz, co chcesz zrobić — <b>post</b> czy <b>relację</b> — i o czym. Sam poznam format z prośby („zrób relację o…”, „karuzela o…”), dobiorę zdjęcia z galerii, napiszę teksty w stylu <b>{preset.name}</b> i ustawię je w najspokojniejszych miejscach kadru.
                   </>
                 )}
               </div>
@@ -239,7 +295,7 @@ export function AIPanel() {
         <textarea
           className="textarea"
           rows={3}
-          placeholder={revising ? 'Co zmienić? np. „mocniejszy hook na 1. klatce”' : isStory ? 'O czym ma być ta relacja?' : 'Zrób mi post o…'}
+          placeholder={revising ? 'Co zmienić? np. „mocniejszy hook na 1. klatce”' : want === 'story' ? 'O czym ma być ta relacja?' : want === 'post' ? 'Zrób mi post o…' : 'Zrób mi post / relację o…'}
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={(e) => {

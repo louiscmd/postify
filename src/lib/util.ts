@@ -43,3 +43,12 @@ const lin = (v: number) => {
 }
 export const relLum = ([r, g, b]: [number, number, number]) => 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
 export const contrast = (l1: number, l2: number) => (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)
+
+/** Polish counts: 1 slajd, 2 slajdy, 5 slajdów. */
+export const plural = (n: number, one: string, few: string, many: string) => {
+  const t = n % 10
+  const h = n % 100
+  if (n === 1) return one
+  if (t >= 2 && t <= 4 && (h < 12 || h > 14)) return few
+  return many
+}

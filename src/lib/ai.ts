@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { BetaContentBlockParam, BetaMessageParam } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { STYLE_LABELS } from '../presets'
 import { FIELD_KEYS, templatesFor, type Fields } from '../presets/templates'
-import { storyTypeById } from '../presets/stories'
+import { STORY_TYPES, storyTypeById } from '../presets/stories'
 import type { FormatKey, GalleryImage, Preset, Role, Zone } from '../types'
 import { describe, type Analysis } from './analyze'
 import { cleanApiKey, loadImg } from './util'
@@ -23,6 +23,10 @@ export interface AiSlide {
 }
 export interface AiCarousel {
   title: string
+  /** what the model decided to make from the request */
+  format: FormatKey
+  /** one of the seven weekly types, when the request matches one (stories only) */
+  storyType?: string
   slides: AiSlide[]
 }
 
@@ -46,12 +50,18 @@ export async function imageToBase64(img: GalleryImage, edge = 768) {
 
 const ROLES: Role[] = ['cover', 'content', 'list', 'statement', 'split', 'cta']
 
-const schema = (structureIds: string[]) => ({
+const schema = (structureIds: string[], formats: FormatKey[]) => ({
   type: 'object',
   additionalProperties: false,
-  required: ['title', 'slides'],
+  required: ['title', 'format', 'storyType', 'slides'],
   properties: {
     title: { type: 'string', description: 'Short project name (3–6 words) in the post language' },
+    format: { type: 'string', enum: formats, description: 'post = carousel 4:5, story = vertical frames 9:16' },
+    storyType: {
+      type: 'string',
+      enum: ['', ...STORY_TYPES.map((t) => t.id)],
+      description: 'Stories only: the weekly type the request matches, "" when none does. Empty string for posts.',
+    },
     slides: {
       type: 'array',
       items: {
@@ -118,8 +128,7 @@ RULES
 5. imageIds: one per frame; two when the structure shows a screenshot (sv-annotated, sv-raw). Only ids from the list.`
 }
 
-const systemPrompt = (preset: Preset, format: FormatKey, storyType?: string) =>
-  format === 'story' ? storyPrompt(preset, storyType) : `You write and plan Instagram carousel posts (4:5) inside the "Postify" editor. You decide the CONTENT of each slide; Postify's layout engine then arranges it automatically — positions, sizes and alignment are randomised within the visual style and adapt to however much text you write.
+const postPrompt = (preset: Preset) => `You write and plan Instagram carousel posts (4:5) inside the "Postify" editor. You decide the CONTENT of each slide; Postify's layout engine then arranges it automatically — positions, sizes and alignment are randomised within the visual style and adapt to however much text you write.
 
 VISUAL STYLE — "${preset.name}": ${preset.description}
 Style notes (typography and mood only — ignore any exact positions, the engine handles placement):
@@ -149,6 +158,40 @@ PHOTOS
 - 1 imageId per slide (2 for split, or 2 when the second photo should appear as an inset next to the text).
 - zone = where the text should sit so it doesn't cover faces or the main subject (use the per-photo brightness/busy stats: lower busy = calmer). Use "auto" if unsure.`
 
+/** The seven weekly types, compact — enough for the model to recognise one in a request. */
+const storyCatalogue = () =>
+  STORY_TYPES.map(
+    (t) => `- storyType="${t.id}" — ${t.name} (${t.cadence}): ${t.purpose} Technique: ${t.technique} Frames: ${t.frames.map((f) => f.structure).join(' → ')}`,
+  ).join('\n')
+
+/**
+ * No format was forced, so the assistant reads the request and decides whether it is
+ * making a carousel or a story — then follows that format's rules.
+ */
+const openPrompt = (preset: Preset) => `You are the assistant inside "Postify", a tool that makes Instagram carousels (post, 4:5, 1080×1350) and stories (story, 9:16, 1080×1920). Read the request, DECIDE which of the two it asks for, set "format" accordingly, and then follow that format's rules below. You write the CONTENT; Postify's layout engine places it.
+
+=== STEP 1: CHOOSE THE FORMAT ===
+- The request names it → obey it. story: "story", "stories", "relacja", "relację", "na 24 h", "9:16", "pionowo". post: "post", "karuzela", "carousel", "feed", "slajdy", "4:5".
+- Nothing named → read the intent. A taught, listed or argued piece that people should be able to come back to is a post. Something quick and personal — one idea per frame, a screenshot with annotations, a DM as proof, a question sticker, hours of a day, an offer with a reply keyword — is a story.
+- Still unclear → post.
+- "storyType": for a story, the weekly type the request matches, or "" when none does. Setting it means following that type's frame plan and technique. For a post it is always "".
+${storyCatalogue()}
+- A number of slides or frames in the request always wins over a type's own frame count.
+
+=== STEP 2a: IF format = "post" ===
+${postPrompt(preset)}
+
+POST STRUCTURES (the "structure" field — only these ids when format = "post"):
+${structureList('post')}
+
+=== STEP 2b: IF format = "story" ===
+${storyPrompt(preset)}
+
+Say nothing about this decision in the content itself — the fields hold only what the reader sees.`
+
+const systemPrompt = (preset: Preset, format?: FormatKey, storyType?: string) =>
+  !format ? openPrompt(preset) : format === 'story' ? storyPrompt(preset, storyType) : postPrompt(preset)
+
 export interface GenerateInput {
   apiKey: string
   model: string
@@ -157,6 +200,7 @@ export interface GenerateInput {
   slideCount: number | 'auto'
   images: { img: GalleryImage; analysis?: Analysis }[]
   history: BetaMessageParam[]
+  /** set only when the user pinned a format in the panel; otherwise the model decides */
   format?: FormatKey
   storyType?: string
 }
@@ -177,7 +221,7 @@ export async function generateCarousel(inp: GenerateInput): Promise<{ result: Ai
   }
   const count =
     inp.slideCount === 'auto'
-      ? "Use the number of slides the request asks for; if it doesn't say, choose what the story needs (usually 5–8)."
+      ? "Use the number of slides or frames the request asks for; if it doesn't say, choose what the subject needs (a carousel usually 5–8, a story 3–5)."
       : `Make exactly ${inp.slideCount} slides.`
   content.push({
     type: 'text',
@@ -186,13 +230,16 @@ export async function generateCarousel(inp: GenerateInput): Promise<{ result: Ai
       : `REQUEST: ${inp.prompt}\n\n${count}`,
   })
 
+  // pinned format → only that format's structures are offered; open → both, filtered after the answer
+  const formats: FormatKey[] = inp.format ? [inp.format] : ['post', 'story']
+  const structureIds = formats.flatMap((f) => templatesFor(f).map((t) => t.id))
   const messages: BetaMessageParam[] = [...inp.history, { role: 'user', content }]
   const stream = client(inp.apiKey).beta.messages.stream({
     model: inp.model,
     max_tokens: 32000,
-    system: systemPrompt(inp.preset, inp.format ?? 'post', inp.storyType),
+    system: systemPrompt(inp.preset, inp.format, inp.storyType),
     messages,
-    output_config: { format: { type: 'json_schema', schema: schema(templatesFor(inp.format ?? 'post').map((t) => t.id)) } },
+    output_config: { format: { type: 'json_schema', schema: schema(structureIds, formats) } },
     ...fallbackParams(inp.model),
   })
   const msg = await stream.finalMessage()
@@ -206,9 +253,13 @@ export async function generateCarousel(inp: GenerateInput): Promise<{ result: Ai
     throw new Error('Nie udało się odczytać odpowiedzi AI. Spróbuj ponownie.')
   }
   const valid = new Set(inp.images.map((i) => i.img.id))
+  result.format = inp.format ?? (result.format === 'story' ? 'story' : 'post')
+  result.storyType = result.format === 'story' ? result.storyType || inp.storyType || undefined : undefined
+  // a structure from the other frame would be arranged for the wrong canvas — drop it and let the role decide
+  const ownStructures = new Set(templatesFor(result.format).map((t) => t.id))
   result.slides = result.slides
     .filter((s) => ROLES.includes(s.role))
-    .map((s) => ({ ...s, imageIds: s.imageIds.filter((id) => valid.has(id)) }))
+    .map((s) => ({ ...s, structure: s.structure && ownStructures.has(s.structure) ? s.structure : undefined, imageIds: s.imageIds.filter((id) => valid.has(id)) }))
   return { result, history: [...messages, { role: 'assistant', content: [{ type: 'text', text }] }] }
 }
 

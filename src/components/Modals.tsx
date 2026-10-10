@@ -4,7 +4,7 @@ import { MODELS } from '../lib/ai'
 import { auth, syncNow } from '../lib/account'
 import { authErrorPl, cloudConfigError, cloudEnabled } from '../lib/cloud'
 import { canShareImages, downloadFile, renderSlidePngs, sharePngs, zipFiles } from '../lib/export'
-import { cleanApiKey, uid } from '../lib/util'
+import { cleanApiKey, plural, uid } from '../lib/util'
 import { SHADOW_LABELS, STYLE_LABELS } from '../presets'
 import { STORY_TYPES } from '../presets/stories'
 import { buildSlide, TEMPLATES } from '../presets/templates'
@@ -30,15 +30,6 @@ function Modal({ title, onClose, children, narrow }: { title: string; onClose: (
 }
 
 const close = () => useStore.setState({ modal: null })
-
-/** Polish counts: 1 slajd, 2 slajdy, 5 slajdów. */
-const plural = (n: number, one: string, few: string, many: string) => {
-  const t = n % 10
-  const h = n % 100
-  if (n === 1) return one
-  if (t >= 2 && t <= 4 && (h < 12 || h > 14)) return few
-  return many
-}
 
 // ── Settings ─────────────────────────────────────────────────
 export function SettingsModal() {
